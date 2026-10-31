@@ -131,6 +131,13 @@ details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:poi
 .foot { text-align:center; color:var(--mut); font-size:12.5px; padding:10px 14px 16px; border-top:1px solid #243040; } .foot a { color:#8fd0ff; }
 @media (min-width: 1251px) { .foot { position:fixed; left:0; right:0; bottom:0; background:#0b0f14; padding:5px 14px; } main { height: calc(100vh - 82px) !important; } #side { height: calc(100vh - 106px) !important; } }
 
+/* retour visuel : la touche s'éclaire quand on appuie, et reste éclairée tant que sa fonction est active */
+.key.pulse { filter: brightness(1.18); box-shadow: 0 0 0 2px #ffe05a, 0 0 12px 3px #ffd54a !important; }
+.rkey.pulse { box-shadow: 0 0 0 2px #fff, 0 0 12px 4px #b6ff3b !important; filter: brightness(1.15); }
+.key.lit { outline: none; box-shadow: 0 0 0 2px #ffe05a, 0 0 10px 3px #ffd54a; }
+.rkey.lit.mk { background: linear-gradient(#fff3b0,#ffd54a) !important; color:#222 !important; box-shadow:0 0 0 1px #8a6d00, 0 0 9px #ffd54a; }
+.rkey.lit.sel { box-shadow: 0 0 0 2px #fff, 0 0 14px 5px #a6ff2a; }
+
 </style>
 </head><body>
 <header class="top"><h1><b>Oscillo</b>Lab</h1>
@@ -830,7 +837,7 @@ OL.Key = function (parent, o) {
   const e = OL.el('button', 'key ' + (o.cls || ''), parent, { left: px(o.x), top: px(o.y), width: px(o.w || 44), height: px(o.h || 24) });
   e.type = 'button'; e.innerHTML = '<span>' + (o.label || '') + '</span>'; if (o.title) e.title = o.title;
   if (o.led) { e.classList.add('hasled'); OL.el('i', 'led', e); }
-  e.addEventListener('click', ev => { ev.preventDefault(); if (o.on) o.on(ev); });
+  e.addEventListener('click', ev => { ev.preventDefault(); e.classList.add('pulse'); setTimeout(() => e.classList.remove('pulse'), 220); if (o.on) o.on(ev); });
   e.setLed = v => e.classList.toggle('lit', !!v);
   return e;
 };
@@ -1058,8 +1065,9 @@ OL.OwonUI = function (root, S) {
   function doAutoset() { const ok = S.autoset(); msg(ok ? 'Autoset' : 'Signal introuvable'); if (ok) { U.menu = null; U.cur.type = 'off'; } }
   function chKey(i) {
     const c = st.ch[i];
-    if (!c.on) { c.on = true; U.menu = 'ch' + i; U.open = -1; S.st.sel = i; return; }
-    if (U.menu === 'ch' + i) { c.on = false; U.menu = null; return; }
+    U.open = -1;
+    if (!c.on) { c.on = true; U.menu = 'ch' + i; S.st.sel = i; return; }
+    if (U.menu === 'ch' + i) { c.on = false; U.menu = null; U.open = -1; return; }
     U.menu = 'ch' + i; U.open = -1; S.st.sel = i;
   }
   function openMenu(id) { if (U.menu === id) { U.open = -1; return; } U.menu = id; U.open = -1; U.page = 0; }
@@ -1284,6 +1292,11 @@ OL.OwonUI = function (root, S) {
   ['bnc1', 'bnc2', 'bnc3'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.bnc')[i]; }); U.ctl.comp = box.querySelector('.comp-term');
   U.flash = ids => { [].concat(ids).forEach(id => { const e = U.ctl[id]; if (!e) return; e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); setTimeout(() => e.classList.remove('flash'), 3600); }); };
   U.tickFrame = function (dt) {
+    const mm = { measure: 'measure', acquire: 'acquire', cursor: 'cursor', display: 'display', utility: 'utility', save: 'save', math: 'math', horiz: 'horiz', trig: 'trigmenu' };
+    Object.keys(mm).forEach(m => { const e = U.ctl[mm[m]]; if (e) e.classList.toggle('lit', U.menu === m || (m === 'math' && st.math.on)); });
+    [0, 1].forEach(i => { const e = U.ctl['ch' + (i + 1)]; if (e) e.classList.toggle('lit', st.ch[i].on && U.menu === 'ch' + i); });
+    if (U.ctl.autoscale) U.ctl.autoscale.classList.toggle('lit', U.autoscale);
+    if (U.ctl.single) U.ctl.single.classList.toggle('lit', S.status === 'WAIT' && !st.run);
     if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset({ keep: true }); } }
     bk.run.setLed(st.run); bk.run.classList.toggle('stopped', !st.run);
   };
@@ -1385,12 +1398,12 @@ OL.RigolUI = function (root, S) {
   }
   const autoShape = (periods, edge) => { const per = (S.lastAuto || {}).per; if (!per) return; st.tdivIdx = OL.nearest(P.tdivs, edge ? per / 100 : periods * per / P.hdiv); if (edge) st.trig.slope = edge; st.hdelay = 0; S.resetAvg(); };
   function chKey(i) {
-    const c = st.ch[i];
+    const c = st.ch[i]; U.drop = null; U.sel2 = -1; U.page = 0;
     if (!c.on) { c.on = true; U.sel = i; st.sel = i; U.menu = 'ch'; U.drop = null; return; }
     if (U.sel === i) { if (U.menu === 'ch') { c.on = false; U.menu = null; const nxt = st.ch.findIndex(x => x.on); if (nxt >= 0) { U.sel = nxt; st.sel = nxt; } } else { U.menu = 'ch'; } return; }
     U.sel = i; st.sel = i; U.menu = 'ch'; U.drop = null;
   }
-  function openMenu(id) { if (U.menu === id && !U.drop) { U.menu = null; return; } U.menu = id; U.drop = null; U.page = 0; }
+  function openMenu(id) { U.sel2 = -1; if (U.menu === id && !U.drop) { U.menu = null; return; } U.menu = id; U.drop = null; U.page = 0; }
   function vpos(n) { if (U.menu === 'cursor' && U.cur.mode !== 'off' && U.cur.fromKnob) return; const c = st.ch[U.sel]; c.pos = Math.max(-8, Math.min(8, c.pos + n * 0.04)); }
   function vdiv(n) { const c = st.ch[U.sel], old = Math.abs(S.vdivLabel(U.sel)); if (c.fineMode) S.fineStep(U.sel, -n); else { c.fk = 0; c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx - n)); } const nw = Math.abs(S.vdivLabel(U.sel)); c.pos = c.pos * old / nw; S.resetAvg(); }
   function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx - n)); S.resetAvg(); }
@@ -1602,6 +1615,10 @@ OL.RigolUI = function (root, S) {
     chk.forEach((k, i) => { k.classList.toggle('lit', st.ch[i].on); });
     leds.forEach((l, i) => l.classList.toggle('on', ['auto', 'normal', 'single'][i] === st.trig.mode));
     bSingle.classList.toggle('lit', S.status === 'WAIT' && !st.run);
+    chk.forEach((k, i) => k.classList.toggle('sel', st.ch[i].on && U.sel === i));
+    const mk = { measure: 'measure', acquire: 'acquire', storage: 'storage', cursor: 'cursor', display: 'display', utility: 'utility', math: 'math', trig: 'trigmenu', horiz: 'horizmenu', auto: 'auto' };
+    Object.keys(mk).forEach(m => { const e = U.ctl[mk[m]]; if (e) { e.classList.add('mk'); e.classList.toggle('lit', U.menu === m || (m === 'math' && st.math.on)); } });
+    if (U.ctl.qm) { U.ctl.qm.classList.add('mk'); U.ctl.qm.classList.toggle('lit', U.qm !== null); }
   };
 };
 })(typeof window !== 'undefined' ? window : globalThis);

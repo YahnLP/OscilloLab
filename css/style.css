@@ -125,3 +125,10 @@ details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:poi
 
 .foot { text-align:center; color:var(--mut); font-size:12.5px; padding:10px 14px 16px; border-top:1px solid #243040; } .foot a { color:#8fd0ff; }
 @media (min-width: 1251px) { .foot { position:fixed; left:0; right:0; bottom:0; background:#0b0f14; padding:5px 14px; } main { height: calc(100vh - 82px) !important; } #side { height: calc(100vh - 106px) !important; } }
+
+/* retour visuel : la touche s'éclaire quand on appuie, et reste éclairée tant que sa fonction est active */
+.key.pulse { filter: brightness(1.18); box-shadow: 0 0 0 2px #ffe05a, 0 0 12px 3px #ffd54a !important; }
+.rkey.pulse { box-shadow: 0 0 0 2px #fff, 0 0 12px 4px #b6ff3b !important; filter: brightness(1.15); }
+.key.lit { outline: none; box-shadow: 0 0 0 2px #ffe05a, 0 0 10px 3px #ffd54a; }
+.rkey.lit.mk { background: linear-gradient(#fff3b0,#ffd54a) !important; color:#222 !important; box-shadow:0 0 0 1px #8a6d00, 0 0 9px #ffd54a; }
+.rkey.lit.sel { box-shadow: 0 0 0 2px #fff, 0 0 14px 5px #a6ff2a; }

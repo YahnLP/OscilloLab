@@ -95,8 +95,9 @@ OL.OwonUI = function (root, S) {
   function doAutoset() { const ok = S.autoset(); msg(ok ? 'Autoset' : 'Signal introuvable'); if (ok) { U.menu = null; U.cur.type = 'off'; } }
   function chKey(i) {
     const c = st.ch[i];
-    if (!c.on) { c.on = true; U.menu = 'ch' + i; U.open = -1; S.st.sel = i; return; }
-    if (U.menu === 'ch' + i) { c.on = false; U.menu = null; return; }
+    U.open = -1;
+    if (!c.on) { c.on = true; U.menu = 'ch' + i; S.st.sel = i; return; }
+    if (U.menu === 'ch' + i) { c.on = false; U.menu = null; U.open = -1; return; }
     U.menu = 'ch' + i; U.open = -1; S.st.sel = i;
   }
   function openMenu(id) { if (U.menu === id) { U.open = -1; return; } U.menu = id; U.open = -1; U.page = 0; }
@@ -321,6 +322,11 @@ OL.OwonUI = function (root, S) {
   ['bnc1', 'bnc2', 'bnc3'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.bnc')[i]; }); U.ctl.comp = box.querySelector('.comp-term');
   U.flash = ids => { [].concat(ids).forEach(id => { const e = U.ctl[id]; if (!e) return; e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); setTimeout(() => e.classList.remove('flash'), 3600); }); };
   U.tickFrame = function (dt) {
+    const mm = { measure: 'measure', acquire: 'acquire', cursor: 'cursor', display: 'display', utility: 'utility', save: 'save', math: 'math', horiz: 'horiz', trig: 'trigmenu' };
+    Object.keys(mm).forEach(m => { const e = U.ctl[mm[m]]; if (e) e.classList.toggle('lit', U.menu === m || (m === 'math' && st.math.on)); });
+    [0, 1].forEach(i => { const e = U.ctl['ch' + (i + 1)]; if (e) e.classList.toggle('lit', st.ch[i].on && U.menu === 'ch' + i); });
+    if (U.ctl.autoscale) U.ctl.autoscale.classList.toggle('lit', U.autoscale);
+    if (U.ctl.single) U.ctl.single.classList.toggle('lit', S.status === 'WAIT' && !st.run);
     if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset({ keep: true }); } }
     bk.run.setLed(st.run); bk.run.classList.toggle('stopped', !st.run);
   };

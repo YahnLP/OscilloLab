@@ -16,7 +16,7 @@ OL.Key = function (parent, o) {
   const e = OL.el('button', 'key ' + (o.cls || ''), parent, { left: px(o.x), top: px(o.y), width: px(o.w || 44), height: px(o.h || 24) });
   e.type = 'button'; e.innerHTML = '<span>' + (o.label || '') + '</span>'; if (o.title) e.title = o.title;
   if (o.led) { e.classList.add('hasled'); OL.el('i', 'led', e); }
-  e.addEventListener('click', ev => { ev.preventDefault(); if (o.on) o.on(ev); });
+  e.addEventListener('click', ev => { ev.preventDefault(); e.classList.add('pulse'); setTimeout(() => e.classList.remove('pulse'), 220); if (o.on) o.on(ev); });
   e.setLed = v => e.classList.toggle('lit', !!v);
   return e;
 };

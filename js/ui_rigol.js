@@ -92,12 +92,12 @@ OL.RigolUI = function (root, S) {
   }
   const autoShape = (periods, edge) => { const per = (S.lastAuto || {}).per; if (!per) return; st.tdivIdx = OL.nearest(P.tdivs, edge ? per / 100 : periods * per / P.hdiv); if (edge) st.trig.slope = edge; st.hdelay = 0; S.resetAvg(); };
   function chKey(i) {
-    const c = st.ch[i];
+    const c = st.ch[i]; U.drop = null; U.sel2 = -1; U.page = 0;
     if (!c.on) { c.on = true; U.sel = i; st.sel = i; U.menu = 'ch'; U.drop = null; return; }
     if (U.sel === i) { if (U.menu === 'ch') { c.on = false; U.menu = null; const nxt = st.ch.findIndex(x => x.on); if (nxt >= 0) { U.sel = nxt; st.sel = nxt; } } else { U.menu = 'ch'; } return; }
     U.sel = i; st.sel = i; U.menu = 'ch'; U.drop = null;
   }
-  function openMenu(id) { if (U.menu === id && !U.drop) { U.menu = null; return; } U.menu = id; U.drop = null; U.page = 0; }
+  function openMenu(id) { U.sel2 = -1; if (U.menu === id && !U.drop) { U.menu = null; return; } U.menu = id; U.drop = null; U.page = 0; }
   function vpos(n) { if (U.menu === 'cursor' && U.cur.mode !== 'off' && U.cur.fromKnob) return; const c = st.ch[U.sel]; c.pos = Math.max(-8, Math.min(8, c.pos + n * 0.04)); }
   function vdiv(n) { const c = st.ch[U.sel], old = Math.abs(S.vdivLabel(U.sel)); if (c.fineMode) S.fineStep(U.sel, -n); else { c.fk = 0; c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx - n)); } const nw = Math.abs(S.vdivLabel(U.sel)); c.pos = c.pos * old / nw; S.resetAvg(); }
   function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx - n)); S.resetAvg(); }
@@ -309,6 +309,10 @@ OL.RigolUI = function (root, S) {
     chk.forEach((k, i) => { k.classList.toggle('lit', st.ch[i].on); });
     leds.forEach((l, i) => l.classList.toggle('on', ['auto', 'normal', 'single'][i] === st.trig.mode));
     bSingle.classList.toggle('lit', S.status === 'WAIT' && !st.run);
+    chk.forEach((k, i) => k.classList.toggle('sel', st.ch[i].on && U.sel === i));
+    const mk = { measure: 'measure', acquire: 'acquire', storage: 'storage', cursor: 'cursor', display: 'display', utility: 'utility', math: 'math', trig: 'trigmenu', horiz: 'horizmenu', auto: 'auto' };
+    Object.keys(mk).forEach(m => { const e = U.ctl[mk[m]]; if (e) { e.classList.add('mk'); e.classList.toggle('lit', U.menu === m || (m === 'math' && st.math.on)); } });
+    if (U.ctl.qm) { U.ctl.qm.classList.add('mk'); U.ctl.qm.classList.toggle('lit', U.qm !== null); }
   };
 };
 })(typeof window !== 'undefined' ? window : globalThis);
