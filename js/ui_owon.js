@@ -29,7 +29,7 @@ OL.OwonUI = function (root, S) {
   const hk = [], fk = [];
   for (let i = 0; i < 5; i++) hk.push(OL.Key(box, { x: 241 + 54.7 * i, y: 421, w: 40, h: 22, label: 'H' + (i + 1), cls: 'round', on: () => pressH(i) }));
   for (let i = 0; i < 5; i++) fk.push(OL.Key(box, { x: 556, y: 90 + i * 58 - 4, w: 38, h: 30, label: 'F' + (i + 1), cls: 'round', on: () => pressF(i) }));
-  OL.Key(box, { x: 556, y: 356, w: 38, h: 22, label: 'Menu<br>off', cls: 'round tiny', on: () => { U.menu = null; U.open = -1; } });
+  OL.Key(box, { x: 556, y: 366, w: 38, h: 22, label: 'Menu<br>off', cls: 'round tiny', on: () => { U.menu = null; U.open = -1; } });
 
   /* panneau de commande */
   E('div', 'o-zone', box, { left: '603px', top: '4px', width: '326px', height: '478px' });
