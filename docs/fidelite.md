@@ -6,7 +6,9 @@ Ce document dit **ce qui est reproduit fidèlement**, **ce qui est simplifié** 
 | Élément | Référence |
 |---|---|
 | Face avant OWON SDS5032E | `docs/ref/owon-sds5032e-face-avant.jpg` + zone de commande des fiches du dépôt `ressources-pedagogiques` |
-| Face avant RIGOL DS1104Z Plus | `docs/ref/rigol-ds1104z-plus-face-avant.jpg` |
+| Face avant RIGOL (DS1054Z / DS1104Z Plus : même disposition) | `docs/ref/rigol-ds1054z-photo-reelle.jpg` (appareil de l'utilisateur), `docs/ref/rigol-ds1104z-plus-face-avant.jpg` |
+| Menus et comportements RIGOL | *DS1000Z User Guide* (RIGOL, éd. 2015-2019) : mémoire par nombre de voies, poussoirs des boutons, mesures (20 horizontales + 17 verticales), règles d'Auto (sinus ≥ 41 Hz, carré ≥ 20 mVpp), modes d'acquisition, menu Auto Setting |
+| Mesures OWON | fiche technique SDS5032E : Vpp, Vavg, Vrms, Freq, Period, Vmax, Vmin, Vtop, Vbase, Vamp, Overshoot, Preshoot, Rise, Fall, Delay A→B ↑/↓, ±Width, ±Duty ; sensibilité 5 mV/div à 5 V/div |
 | Écran OWON | capture annotée des fiches (800 × 600, voie 1 rouge, voie 2 jaune, menus bleus H1–H5 / F1–F5) |
 | Écran RIGOL | capture annotée des fiches (800 × 480, voie 1 jaune, voie 2 cyan, voie 3 magenta, voie 4 bleue) |
 
@@ -17,11 +19,12 @@ Ce document dit **ce qui est reproduit fidèlement**, **ce qui est simplifié** 
 | Sonde ×1 | pas de diviseur, bande passante limitée (5 MHz OWON, 6 MHz RIGOL) |
 | Face avant analogique | passe-bas du 1er ordre (30 MHz OWON, 100 MHz RIGOL), limite 20 MHz optionnelle, couplage AC (retrait de la valeur moyenne), GND |
 | CAN | 8 bits (32 niveaux par carreau), écrêtage à ±4,2 carreaux, bruit de 0,4 mV + 0,3 % de la sensibilité |
-| Échantillonnage | OWON : 250 MS/s max, 10 k points → cadence = min(250 MS/s ; 10 k / durée écran) : **repliement possible** aux bases lentes. RIGOL : 1 GSa/s (1 voie), 500 MSa/s (2 voies), 250 MSa/s (3–4 voies), mémoire 24 Mpts |
+| Échantillonnage | OWON : 250 MS/s max, 10 k points → cadence = min(250 MS/s ; 10 k / durée écran) : **repliement possible** aux bases lentes. RIGOL DS1054Z : 1 GSa/s (1 voie), 500 MSa/s (2 voies), 250 MSa/s (3–4 voies) ; mémoire 12 Mpts (1 voie), 6 Mpts (2 voies), 3 Mpts (3–4 voies) ; profondeur « Auto » 3 Mpts dès 2 voies (relevé sur l'écran de l'appareil réel) |
 | Déclenchement | balayage continu du signal, détection de franchissement du niveau avec interpolation, pente montante / descendante / les deux, temps mort (holdoff), Auto / Normal / Single, Force ; Auto sans déclenchement : image non synchronisée |
 | Mode Roll | à partir de 100 ms/div (OWON) et 200 ms/div (RIGOL) : pas de déclenchement, défilement |
 | Mesures | calculées sur les données **affichées**. Vtop / Vbase par histogramme, seuils à 10/50/90 %. Moyenne et efficace : « écran » (tout l'écran) ou « cycle » (une période entière) |
-| Autoset | refuse en dessous de 20 Hz ou 5 mV ; vise environ 2 à 3 périodes et 4 carreaux de haut |
+| Autoset / AUTO | RIGOL : refuse sous 41 Hz ou 20 mVpp (manuel) ; OWON : 20 Hz et 5 mV (valeurs **à vérifier**) ; vise 2 à 3 périodes et 4 carreaux de haut ; RIGOL : menu Auto Setting avec Undo |
+| Boutons | sens horaire = V/div et s/div plus petits ; RIGOL : appui POSITION → zéro, appui LEVEL → 0 V, appui SCALE vertical → réglage fin / par paliers ; OWON : touche 50 % |
 
 ## 3. Simplifications connues
 - Pas de réglage fin du V/div, pas de FFT, pas de base de temps retardée, pas d'entrée EXT, pas de voies logiques ni de décodage série.

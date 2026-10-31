@@ -77,7 +77,7 @@ OL.OwonUI = function (root, S) {
   OL.Label(box, 858, 180, 'Trigger', 'zl', 66);
   bk.trigmenu = OL.Key(box, { x: 866, y: 198, w: 50, h: 28, label: 'Menu', cls: 'darkblue2', on: () => openMenu('trig') });
   OL.Label(box, 858, 232, 'TRIG LEVEL', 'zl', 66);
-  OL.Knob(box, { x: 891, y: 268, r: 17, cls: 'smk', turn: n => level(n), push: () => level50() });
+  OL.Knob(box, { x: 891, y: 268, r: 17, cls: 'smk', turn: n => level(n) });
   bk.p50 = OL.Key(box, { x: 866, y: 308, w: 50, h: 28, label: '50%', cls: 'white', on: () => level50() });
   bk.force = OL.Key(box, { x: 866, y: 352, w: 50, h: 28, label: 'Force', cls: 'white', on: () => S.force() });
   /* BNC */
@@ -107,8 +107,8 @@ OL.OwonUI = function (root, S) {
   }
   function clampD(v) { return Math.max(-5.9, Math.min(5.9, v)); }
   function vposPush(i) { st.ch[i].pos = 0; }
-  function vdiv(i, n) { const c = st.ch[i]; c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx + n)); S.resetAvg(); }
-  function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx + n)); S.resetAvg(); st.hdelay = hclamp(st.hdelay); }
+  function vdiv(i, n) { const c = st.ch[i]; c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx - n)); S.resetAvg(); }
+  function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx - n)); S.resetAvg(); st.hdelay = hclamp(st.hdelay); }
   function level(n) {
     if (U.trigKnob === 'holdoff') { st.trig.holdoff = Math.max(100e-9, Math.min(1.5, st.trig.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); return; }
     const lab = Math.abs(S.vdivLabel(st.trig.src)); st.trig.level += n * lab / 25;
@@ -137,7 +137,7 @@ OL.OwonUI = function (root, S) {
   });
   menus.trig = () => { const t = st.trig; return [
     { label: 'Single', val: () => 'Edge', opts: [opt('Edge', () => { })] },
-    { label: 'Source', val: () => P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })).concat([opt('EXT', () => msg('EXT : non câblé'))]) },
+    { label: 'Source', val: () => t.src === 'line' ? 'AC Line' : P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })).concat([opt('EXT', () => msg('EXT : entrée non câblée dans ce simulateur')), opt('AC Line', () => { t.src = 'line'; })]) },
     { label: 'Coupling', val: () => ({ dc: 'DC', ac: 'AC', hf: 'HF', lf: 'LF' })[t.coup], opts: [opt('DC', () => { t.coup = 'dc'; }), opt('AC', () => { t.coup = 'ac'; }), opt('HF Reject', () => { t.coup = 'hf'; }), opt('LF Reject', () => { t.coup = 'lf'; })] },
     { label: 'Slope', val: () => t.slope === 'rise' ? '↗' : '↘', opts: [opt('↗ Rising', () => { t.slope = 'rise'; }), opt('↘ Falling', () => { t.slope = 'fall'; })] },
     { label: 'Auto', val: () => '&Holdoff', labelf: () => ({ auto: 'Auto', normal: 'Normal', single: 'Single' })[t.mode], knob: n => { t.holdoff = Math.max(100e-9, Math.min(1.5, t.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); },
@@ -146,16 +146,14 @@ OL.OwonUI = function (root, S) {
     { label: 'Main TB', val: () => 'Window', opts: [opt('Main TB', () => { })] },
     { label: 'Holdoff', val: () => OL.fmt(st.trig.holdoff, 's'), knob: n => { st.trig.holdoff = Math.max(100e-9, Math.min(1.5, st.trig.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); }, opts: [opt('Reset', () => { st.trig.holdoff = 100e-9; })] },
     { label: 'Trig knob', val: () => U.trigKnob === 'level' ? 'Level' : 'Holdoff', opts: [opt('Level', () => { U.trigKnob = 'level'; }), opt('Holdoff', () => { U.trigKnob = 'holdoff'; })] }];
-  const MV = ['max', 'min', 'pp', 'top', 'base', 'amp', 'avg', 'rms', 'cycavg', 'cycrms', 'over', 'pre'], MT = ['freq', 'period', 'rise', 'fall', 'pwidth', 'nwidth', 'pduty', 'nduty'];
-  const addMeas = (key, ch) => { const k = ch + key; const i = U.meas.findIndex(m => m.id === k); if (i >= 0) U.meas.splice(i, 1); else { if (U.meas.length >= 8) U.meas.shift(); U.meas.push({ id: k, key, ch }); } };
-  const listOpts = keys => keys.map(k => ({ t: OL.MEAS[k].n + (U.meas.some(m => m.id === U.measCh + k) ? ' ✓' : ''), f: () => addMeas(k, U.measCh), dyn: true }));
+  const MK = OL.OWON_MEAS.concat(['rdelay', 'fdelay']), mname = k => k === 'rdelay' ? 'Delay A→B ↑' : k === 'fdelay' ? 'Delay A→B ↓' : OL.MEAS[k].n;
+  const addM = () => { const k = MK[U.mType || 0]; OL.toggleMeas(U.meas, OL.MEAS2[k] ? { id: k, key: k, a: 0, b: 1 } : { id: U.measCh + k, key: k, a: U.measCh }, 8); };
+  const rmM = () => { const k = MK[U.mType || 0], id = OL.MEAS2[k] ? k : U.measCh + k; const i = U.meas.findIndex(x => x.id === id); if (i >= 0) U.meas.splice(i, 1); };
+  const mTypeKnob = n => { U.mType = ((U.mType || 0) + n + MK.length) % MK.length; };
+  const typeOpt = () => ({ t: () => 'Type<br>' + mname(MK[U.mType || 0]), f: () => { } }), srcOpt = () => ({ t: () => 'Source<br>' + P.chNames[U.measCh], f: () => { U.measCh = (U.measCh + 1) % P.nch; } });
   menus.measure = () => [
-    { label: 'Source', val: () => P.chNames[U.measCh], opts: P.chNames.map((n, k) => opt(n, () => { U.measCh = k; })) },
-    { label: 'Voltage', val: () => '', opts: () => listOpts(MV) , paged: true },
-    { label: 'Time', val: () => '', opts: () => listOpts(MT), paged: true },
-    { label: 'Delay', val: () => '', opts: () => [opt('CH1→CH2 ↑ (retard)', () => addDelay('delay')), opt('CH1→CH2 ↑ (phase)', () => addDelay('phase'))] },
-    { label: 'Clear', val: () => '', opts: [opt('Effacer tout', () => { U.meas.length = 0; })] }];
-  function addDelay(kind) { const id = 'D' + kind; const i = U.meas.findIndex(m => m.id === id); if (i >= 0) U.meas.splice(i, 1); else { if (U.meas.length >= 8) U.meas.shift(); U.meas.push({ id, key: kind, ch: 0, delay: true }); } }
+    { label: 'Add', val: () => '', knob: mTypeKnob, opts: [typeOpt(), srcOpt(), { t: '', f: () => { } }, { t: 'Add', f: addM }, { t: '', f: () => { } }] },
+    { label: 'Remove', val: () => '', knob: mTypeKnob, opts: [typeOpt(), srcOpt(), { t: 'Remove', f: rmM }, { t: 'Remove<br>All', f: () => { U.meas.length = 0; } }, { t: '', f: () => { } }] }];
   menus.cursor = () => [
     { label: 'Type', val: () => ({ off: 'Off', v: 'Voltage', t: 'Time' })[U.cur.type], opts: [opt('Off', () => { U.cur.type = 'off'; }), opt('Voltage', () => { U.cur.type = 'v'; }), opt('Time', () => { U.cur.type = 't'; })] },
     { label: 'Source', val: () => P.chNames[U.cur.src], opts: P.chNames.map((n, k) => opt(n, () => { U.cur.src = k; })) },
@@ -168,7 +166,7 @@ OL.OwonUI = function (root, S) {
   menus.display = () => [
     { label: 'Type', val: () => st.dots ? 'Dots' : 'Vect', opts: [opt('Vect', () => { st.dots = false; }), opt('Dots', () => { st.dots = true; })] },
     { label: 'Format', val: () => st.xy ? 'XY' : 'YT', opts: [opt('YT', () => { st.xy = false; }), opt('XY', () => { st.xy = true; })] },
-    { label: 'Persist', val: () => ({ 0: 'Off', 1: '1s', 2: '2s', 5: '5s', 99: 'Inf' })[st.persist], opts: [[0, 'Off'], [1, '1 s'], [2, '2 s'], [5, '5 s'], [99, 'Infinite']].map(([v, t]) => opt(t, () => { st.persist = v; U.ghost = null; })) },
+    { label: 'Persist', val: () => ({ 0: 'Off', 1: '1s', 2: '2s', 5: '5s', 99: 'Inf' })[st.persist] || 'Off', opts: [[0, 'Off'], [1, '1 s'], [2, '2 s'], [5, '5 s'], [99, 'Infinite']].map(([v, t]) => opt(t, () => { st.persist = v; U.ghost = null; })) },
     { label: 'Grid', val: () => U.gridMode === 'cross' ? 'Axes' : 'Full', opts: [opt('Full', () => { U.gridMode = 'full'; }), opt('Axes', () => { U.gridMode = 'cross'; })] }];
   menus.utility = () => [
     { label: 'Self Cal', val: () => '', opts: [opt('Exécuter', () => { U.selfcal = performance.now(); })] },
@@ -181,7 +179,7 @@ OL.OwonUI = function (root, S) {
     { label: 'Recall', val: () => '', opts: [opt('Rappeler', () => { if (mem.s) { Object.assign(st, JSON.parse(mem.s)); msg('Réglages rappelés'); } else msg('Mémoire vide'); })] },
     { label: 'Default', val: () => '', opts: [opt('Réglages d\'usine', () => { S.defaultSetup(); U.meas.length = 0; U.cur.type = 'off'; msg('Réglages d\'usine'); })] }];
   menus.math = () => [
-    { label: 'Operation', val: () => ({ 'a+b': 'CH1+CH2', 'a-b': 'CH1-CH2', 'a*b': 'CH1×CH2' })[st.math.op], opts: [opt('CH1+CH2', () => { st.math.op = 'a+b'; }), opt('CH1-CH2', () => { st.math.op = 'a-b'; }), opt('CH1×CH2', () => { st.math.op = 'a*b'; })] }];
+    { label: 'Operation', val: () => ({ 'a+b': 'CH1+CH2', 'a-b': 'CH1-CH2', 'a*b': 'CH1×CH2', 'a/b': 'CH1÷CH2' })[st.math.op], opts: [opt('CH1+CH2', () => { st.math.op = 'a+b'; }), opt('CH1-CH2', () => { st.math.op = 'a-b'; }), opt('CH1×CH2', () => { st.math.op = 'a*b'; }), opt('CH1÷CH2', () => { st.math.op = 'a/b'; })] }];
   function pressH(i) {
     const m = menus[U.menu]; if (!m) return; const it = m()[i]; if (!it) return;
     if (it.opts) { U.open = (U.open === i) ? -1 : i; U.page = 0; }
@@ -229,8 +227,7 @@ OL.OwonUI = function (root, S) {
     OL.drawGrid(c, GR, { full: U.gridMode !== 'cross', line: '#585858', axis: '#9b9b9b', frame: '#bdbdbd' });
     const dh = GR.h / 8, cy = GR.y + GR.h / 2;
     /* tracés */
-    if (rec) {
-      const ghost = st.persist ? (U.ghost || (U.ghost = [])) : null;
+    if (rec) OL.persistDraw(U, S, c, 800, 600, st.persist, c => {
       if (st.xy) { const a = sc.divs(0), b = sc.divs(1); OL.drawXY(c, GR, a, b, cols[0]); }
       else for (let i = 0; i < P.nch; i++) {
         if (!st.ch[i].on) continue;
@@ -239,16 +236,16 @@ OL.OwonUI = function (root, S) {
       }
       if (st.math.on && st.ch[0].on && st.ch[1].on && !st.xy) {
         const v0 = sc.volts(0), v1 = sc.volts(1), m = new Float64Array(v0.length), lab = Math.abs(sc.vdivLabel(0));
-        for (let j = 0; j < m.length; j++) { const a = v0[j], b = v1[j]; const r = st.math.op === 'a+b' ? a + b : st.math.op === 'a-b' ? a - b : a * b; m[j] = Math.max(-4.2, Math.min(4.2, r / lab)); }
+        for (let j = 0; j < m.length; j++) { const a = v0[j], b = v1[j]; const r = st.math.op === 'a+b' ? a + b : st.math.op === 'a-b' ? a - b : st.math.op === 'a*b' ? a * b : (b ? a / b : 0); m[j] = Math.max(-4.2, Math.min(4.2, r / lab)); }
         OL.drawTrace(c, GR, m, '#c050ff', {});
       }
-    }
+    });
     /* marqueurs de position (gauche) et de niveau de déclenchement (droite) */
     for (let i = 0; i < P.nch; i++) if (st.ch[i].on) {
       const y = cy - st.ch[i].pos * dh; c.fillStyle = cols[i]; c.beginPath(); c.moveTo(0, y - 9); c.lineTo(14, y - 9); c.lineTo(20, y); c.lineTo(14, y + 9); c.lineTo(0, y + 9); c.closePath(); c.fill();
       OL.text(c, String(i + 1), 7, y + 1, { size: 12, color: '#000', align: 'center', bold: true });
     }
-    { const t = st.trig, lab = Math.abs(sc.vdivLabel(t.src)), y = Math.max(GR.y + 4, Math.min(GR.y + GR.h - 4, cy - (t.level / lab + st.ch[t.src].pos) * dh));
+    if (st.trig.src !== 'line') { const t = st.trig, lab = Math.abs(sc.vdivLabel(t.src)), y = Math.max(GR.y + 4, Math.min(GR.y + GR.h - 4, cy - (t.level / lab + st.ch[t.src].pos) * dh));
       c.fillStyle = '#d8d8ff'; c.beginPath(); c.moveTo(800, y); c.lineTo(786, y - 8); c.lineTo(786, y + 8); c.closePath(); c.fill(); OL.text(c, 'T', 792, y + 1, { size: 9, color: '#000', align: 'center', bold: true }); }
     /* curseurs */
     if (U.cur.type !== 'off') drawCursors(c);
@@ -296,13 +293,9 @@ OL.OwonUI = function (root, S) {
   }
   function drawMeas(c) {
     if (!U.meas.length) return;
-    const cache = {}; const lines = U.meas.map(m => {
-      if (m.delay) { const a = S.volts(0), b = S.volts(1); if (!a || !b) return { c: '#fff', t: '****' }; const d = OL.delayAB(a, b, S.window() / a.length); const m0 = OL.measure(a, S.window() / a.length); if (d === null) return { c: '#fff', t: (m.key === 'phase' ? 'Phase' : 'Delay') + ' ****' }; if (m.key === 'delay') return { c: '#fff', t: 'Delay 1→2: ' + OL.fmt(d, 's', 4) }; return { c: '#fff', t: m0.period ? 'Phase 1→2: ' + OL.fmtNum(d / m0.period * 360, 1) + '°' : 'Phase ****' }; }
-      const r = cache[m.ch] || (cache[m.ch] = U.measureOf(m.ch)); const def = OL.MEAS[m.key];
-      return { c: cols[m.ch], t: P.chNames[m.ch] + ' ' + def.n + ': ' + (r ? OL.fmtMeas(def, def.v(r)) : '****') };
-    });
-    const w = 214, h = 8 + lines.length * 21; OL.rrect(c, GR.x + 4, GR.y + 4, w, h, 5, 'rgba(0,0,0,.72)', '#667', 1);
-    lines.forEach((l, k) => OL.text(c, l.t.replace('µ', 'u').replace(/(\d),(\d)/g, '$1.$2'), GR.x + 12, GR.y + 18 + k * 21, { size: 15, color: l.c }));
+    const lines = U.meas.map(m => OL.measValue(S, m, 'owon'));
+    const h = 8 + lines.length * 21; OL.rrect(c, GR.x + 4, GR.y + 4, 232, h, 5, 'rgba(0,0,0,.72)', '#667', 1);
+    lines.forEach((l, k) => OL.text(c, (l.label + ': ' + l.val).replace('µ', 'u').replace(/(\d),(\d)/g, '$1.$2'), GR.x + 12, GR.y + 18 + k * 21, { size: 15, color: cols[l.ci] }));
   }
   function drawMenu(c) {
     if (!U.menu) return; const mf = menus[U.menu]; if (!mf) return; const items = mf();
@@ -322,6 +315,12 @@ OL.OwonUI = function (root, S) {
         const t = typeof o.t === 'function' ? o.t() : o.t; const parts = String(t).split('<br>'); parts.forEach((p, q) => OL.text(c, p, 744, y + 26 + (q - (parts.length - 1) / 2) * 17, { size: 15, align: 'center' })); });
     }
   }
+  /* repères des commandes (pour le bouton « Montre-moi » des TP) */
+  U.ctl = {}; const KM = { Measure: 'measure', Acquire: 'acquire', Autoset: 'autoset', Utility: 'utility', Cursor: 'cursor', Autoscale: 'autoscale', Save: 'save', Display: 'display', Help: 'help', Copy: 'copy', 'Run/Stop': 'run', Single: 'single', CH1: 'ch1', CH2: 'ch2', Math: 'math', HORIZ: 'horiz', Menu: 'trigmenu', '50%': 'p50', Force: 'force', Menuoff: 'menuoff' };
+  box.querySelectorAll('button.key').forEach(b => { const tx = b.textContent.trim(); const id = KM[tx] || (/^[HF][1-5]$/.test(tx) ? tx.toLowerCase() : null); if (id) U.ctl[id] = b; });
+  ['m', 'vpos1', 'vdiv1', 'vpos2', 'vdiv2', 'hpos', 'secdiv', 'level'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.knob')[i]; });
+  ['bnc1', 'bnc2', 'bnc3'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.bnc')[i]; }); U.ctl.comp = box.querySelector('.comp-term');
+  U.flash = ids => { [].concat(ids).forEach(id => { const e = U.ctl[id]; if (!e) return; e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); setTimeout(() => e.classList.remove('flash'), 3600); }); };
   U.tickFrame = function (dt) {
     if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset({ keep: true }); } }
     bk.run.setLed(st.run); bk.run.classList.toggle('stopped', !st.run);

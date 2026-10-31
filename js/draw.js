@@ -69,3 +69,24 @@ OL.rrect = function (c, x, y, w, h, r, fill, stroke, lw) {
   if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw || 1; c.stroke(); }
 };
 })(typeof window !== 'undefined' ? window : globalThis);
+(function (g) {
+const OL = g.OL;
+/* persistance : les tracés précédents s'effacent progressivement (ou jamais pour « Infinite ») */
+OL.persistDraw = function (U, S, c, W, H, persist, drawFn) {
+  if (!persist) { drawFn(c); return; }
+  if (!U.gc) { U.gc = document.createElement('canvas'); U.gc.width = W; U.gc.height = H; U.gx = U.gc.getContext('2d'); }
+  if (U.ghost === null) { U.gx.clearRect(0, 0, W, H); U.ghost = 1; }
+  if (S.version !== U.pv) {
+    U.pv = S.version;
+    if (persist < 90) { U.gx.save(); U.gx.globalCompositeOperation = 'destination-out'; U.gx.fillStyle = 'rgba(0,0,0,' + (1 - Math.exp(-0.04 / persist)) + ')'; U.gx.fillRect(0, 0, W, H); U.gx.restore(); }
+    drawFn(U.gx);
+  }
+  c.drawImage(U.gc, 0, 0);
+};
+const og = OL.drawGrid;
+/* variante : mode 'none' (cadre seul) et luminosité réglable */
+OL.drawGrid2 = function (c, R, mode, bright, base) {
+  const k = Math.round(25 + 1.5 * (bright === undefined ? 50 : bright)), line = 'rgb(' + k + ',' + k + ',' + k + ')';
+  og(c, R, Object.assign({ full: mode === 'full', line, axis: mode === 'none' ? 'rgba(0,0,0,0)' : '#8a8a8a', frame: '#9a9a9a' }, base || {}));
+};
+})(typeof window !== 'undefined' ? window : globalThis);

@@ -108,3 +108,17 @@ kbd { background:#26364a; border-radius:4px; padding:0 5px; border:1px solid #3b
 #benchPop > div .card { margin:0; border-color:#37a0ff; }
 #benchPop h3 { cursor:grab; user-select:none; touch-action:none; }
 #benchPop .seg { flex-wrap:wrap; } #benchPop .seg button { padding:6px 9px; font-size:13px; }
+
+/* « Montre-moi » : clignotement d'une commande de la face avant */
+.flash { outline: 4px solid #ffd54a !important; outline-offset: 4px; border-radius: 10px; animation: fl .55s ease-in-out 6; z-index: 60 !important; }
+.knob.flash, .bnc.flash { border-radius: 50%; }
+@keyframes fl { 50% { outline-color: #ff3d00; box-shadow: 0 0 22px 8px #ffb300; } }
+.learn { background:#0f2236; border-left:3px solid #37a0ff; padding:8px 10px; margin:8px 0; border-radius:0 8px 8px 0; font-size:13.5px; }
+.learn b.t { color:#8fd0ff; }
+ol.how { margin:6px 0 6px 0; padding-left:22px; font-size:13.5px; } ol.how li { margin:4px 0; }
+button.show { background:#3a2f10; color:#ffd54a; border:1px solid #7a6420; border-radius:12px; font-size:12px; padding:0 8px; margin-left:6px; cursor:pointer; }
+button.show:hover { background:#5a4716; }
+details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:pointer; color:#ffd54a; }
+.lesson h4 { margin:12px 0 4px; color:#8fd0ff; }
+
+.rkey.lit { background: linear-gradient(#d4ff6a,#8fe000) !important; color:#102 !important; box-shadow:0 0 0 1px #4a7a00, 0 0 10px #a6ff2a; }

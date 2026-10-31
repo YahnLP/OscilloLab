@@ -1,10 +1,11 @@
-# OscilloLab — simulateur des oscilloscopes OWON SDS5032E(V) et RIGOL DS1104Z
+# OscilloLab — simulateur des oscilloscopes OWON SDS5032E(V) et RIGOL DS1054Z
 
 Simulateur **hors ligne** (HTML/CSS/JS pur, aucune dépendance), dans l'esprit d'**ElectroLab** : on apprend à **régler l'oscilloscope** sur l'appareil lui-même, avec des **TP corrigés automatiquement**.
 
-- Deux faces avant interactives : **OWON SDS5032E(V)** (2 voies, 30 MHz, 250 MS/s, 10 k points) et **RIGOL DS1104Z / Plus** (4 voies, 100 MHz, 1 GSa/s, 24 Mpts).
+- Deux faces avant interactives : **OWON SDS5032E(V)** (2 voies, 30 MHz, 250 MS/s, 10 k points) et **RIGOL DS1054Z / Plus** (4 voies, 100 MHz, 1 GSa/s, 24 Mpts).
 - Une **paillasse** : générateur de fonctions, sortie de compensation de l'appareil, pont de diodes (avec filtrage), NE555, charge/décharge d'un condensateur, filtre RC (déphasage), bouton poussoir avec rebonds, alimentation continue.
 - **16 TP** pensés pour l'examen : sonde, réglages, mesures, curseurs, déphasage…
+- Une **partie pédagogique** dans chaque TP : *À savoir* (la notion expliquée avant de s'en servir), *Pas à pas* touche par touche **pour l'appareil choisi** avec un bouton **👆 Montre-moi** (la commande clignote sur la face avant) et *Un coup de pouce*. Un mini-cours **« Les bases de l'oscilloscope »** précède le TP 1.
 
 ## Lancer
 Ouvrir `dist/oscillolab.html` (fichier unique, fonctionne sans réseau) **ou** `index.html` (sources). Menu du haut : choix de l'appareil. À droite : liste des TP, **Mode libre** et branchements.
@@ -38,7 +39,7 @@ Les consignes sont données pour **les deux appareils** (pastilles OWON / RIGOL)
 ## Fidélité aux appareils
 Voir [`docs/fidelite.md`](docs/fidelite.md) pour le détail. En bref :
 
-- **Faces avant** dessinées d'après les photos de référence (`docs/ref/`) : disposition des touches, couleurs, boutons, entrées BNC, sortie de compensation.
+- **Faces avant** dessinées d'après les photos de référence (`docs/ref/`, dont la photo du DS1054Z réel) : disposition des touches, couleurs, boutons, entrées BNC, sortie de compensation.
 - **Écrans** reproduits d'après les captures des appareils (bandeau d'état, marqueurs de zéro et de déclenchement, lectures V/div et s/div, menus H1–H5 / F1–F5 pour l'OWON ; menu à six touches, barre des voies, mesures rapides pour le RIGOL).
 - **Comportements simulés** : chaîne verticale (sonde ×1 / ×10 et **compensation réaliste**, bande passante, couplage DC / AC / GND, limite 20 MHz, inversion, CAN 8 bits, bruit), déclenchement sur front (source, pente, niveau, couplage, temps mort, Auto / Normal / Single, Force, 50 %), **profondeur mémoire et cadence d'échantillonnage** (repliement sur l'OWON aux bases de temps lentes), détection de crêtes, moyennage, mode Roll, XY, curseurs, mesures automatiques (Max, Min, Upp, Vtop, Vbase, Vamp, moyenne, efficace, **sur un nombre entier de périodes ou sur tout l'écran**, dépassement, fréquence, période, montée, descente, largeurs, rapports cycliques, retard et phase entre voies), Autoset (refus sous 20 Hz ou 5 mV).
 - **Pièges réels reproduits** : sonde non compensée, menu Probe ≠ interrupteur, pince de masse oubliée (ronflement 50 Hz), niveau de déclenchement hors du signal, couplage DC qui cache une ondulation, mesure de moyenne sur un nombre non entier de périodes.
@@ -53,4 +54,7 @@ node tests/ui.test.js          # ouvre les 16 TP sur les 2 appareils, résout le
 Arborescence : `js/signals.js` (sources) · `js/scope.js` (moteur) · `js/measure.js` · `js/autoset.js` · `js/profiles.js` (caractéristiques des deux appareils) · `js/ui_owon.js`, `js/ui_rigol.js` (faces avant et écrans) · `js/bench.js` (paillasse) · `js/tp.js` + `js/tps_a.js`, `js/tps_b.js` (TP) · `js/app.js`.
 
 ## Limites connues (à valider avec les appareils)
-Les libellés et l'organisation des menus ont été reconstitués à partir des fiches du dépôt `ressources-pedagogiques`, des photos de face avant et des captures d'écran : **à comparer avec vos appareils** et à corriger si besoin. Non simulés : entrée EXT, FFT, base de temps retardée, voies logiques (LA), REF, déclenchements autres que sur front, décodage série, régime fin de V/div.
+Les menus du RIGOL suivent le **manuel officiel DS1000Z** (listes de mesures, mémoire, déclenchement, boutons) et la photo de votre DS1054Z ; ceux de l'OWON suivent vos fiches, la photo et la fiche technique. Le simulateur n'ajoute **aucune fonction qui n'existe pas** sur les appareils, mais n'en simule pas encore certaines :
+- **RIGOL :** déclenchements autres que sur front (menu présent, avec message), base de temps retardée (appui sur SCALE horizontal), FFT et fonctions mathématiques autres que A+B, A−B, A×B, A/B, statistiques de mesure, curseurs Auto et XY, REF, enregistrement, Pass/Fail, décodage série (option payante sur l'appareil), voies logiques (absentes du DS1054Z).
+- **OWON :** entrée EXT, FFT, déclenchements Pulse / Video / Slope / Alternate, mode Scan particulier, sauvegarde de traces.
+- **Ni l'un ni l'autre :** réglage de la luminosité de l'écran, langue de l'interface.

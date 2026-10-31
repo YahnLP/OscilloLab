@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OscilloLab — simulateur d'oscilloscopes OWON SDS5032E et RIGOL DS1104Z</title>
+<title>OscilloLab — simulateur d'oscilloscopes OWON SDS5032E et RIGOL DS1054Z</title>
 <style>
 :root { --bg:#10151c; --ink:#e8edf3; --mut:#8fa0b3; --acc:#37a0ff; --ok:#27c26a; --bad:#ff5a5a; }
 * { box-sizing: border-box; }
@@ -113,10 +113,24 @@ kbd { background:#26364a; border-radius:4px; padding:0 5px; border:1px solid #3b
 #benchPop h3 { cursor:grab; user-select:none; touch-action:none; }
 #benchPop .seg { flex-wrap:wrap; } #benchPop .seg button { padding:6px 9px; font-size:13px; }
 
+/* « Montre-moi » : clignotement d'une commande de la face avant */
+.flash { outline: 4px solid #ffd54a !important; outline-offset: 4px; border-radius: 10px; animation: fl .55s ease-in-out 6; z-index: 60 !important; }
+.knob.flash, .bnc.flash { border-radius: 50%; }
+@keyframes fl { 50% { outline-color: #ff3d00; box-shadow: 0 0 22px 8px #ffb300; } }
+.learn { background:#0f2236; border-left:3px solid #37a0ff; padding:8px 10px; margin:8px 0; border-radius:0 8px 8px 0; font-size:13.5px; }
+.learn b.t { color:#8fd0ff; }
+ol.how { margin:6px 0 6px 0; padding-left:22px; font-size:13.5px; } ol.how li { margin:4px 0; }
+button.show { background:#3a2f10; color:#ffd54a; border:1px solid #7a6420; border-radius:12px; font-size:12px; padding:0 8px; margin-left:6px; cursor:pointer; }
+button.show:hover { background:#5a4716; }
+details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:pointer; color:#ffd54a; }
+.lesson h4 { margin:12px 0 4px; color:#8fd0ff; }
+
+.rkey.lit { background: linear-gradient(#d4ff6a,#8fe000) !important; color:#102 !important; box-shadow:0 0 0 1px #4a7a00, 0 0 10px #a6ff2a; }
+
 </style>
 </head><body>
 <header class="top"><h1><b>Oscillo</b>Lab</h1>
-<div class="seg" id="devSeg"><button data-d="owon" class="on">OWON SDS5032E(V)</button><button data-d="rigol">RIGOL DS1104Z</button></div>
+<div class="seg" id="devSeg"><button data-d="owon" class="on">OWON SDS5032E(V)</button><button data-d="rigol">RIGOL DS1054Z</button></div>
 <span id="tpName" style="color:#8fa0b3"></span></header>
 <main><div><div id="benchBar"><button class="btn" data-p="wire">🔌 Branchements des sondes</button><button class="btn" data-p="gbf">〰 Générateur de fonctions</button><button class="btn" data-p="mont">🧩 Montages en entrée</button></div>
 <div id="benchPop"><div data-p="wire"></div><div data-p="gbf"></div><div data-p="mont"></div></div>
@@ -333,22 +347,24 @@ const OL = g.OL = g.OL || {};
 OL.PROFILES = {
   owon: {
     id: 'owon', name: 'OWON SDS5032E(V)', nch: 2, bw: 30e6, bwProbeX1: 5e6,
-    vdivs: OL.seq125(0.002, 5), tdivs: OL.seq125(5e-9, 100),
+    vdivs: OL.seq125(0.005, 5), tdivs: OL.seq125(5e-9, 100), autoMinF: 20, autoMinV: 0.005,
     srMax: 250e6, depth: 10000, compVpp: 5, compFreq: 1000,
     probes: [1, 10, 100, 1000], hdiv: 12, vdiv: 8,
     colors: ['#f2d200', '#1ec7f0', '#e24dc9', '#3c8dff'], posUnit: 'div',
     chNames: ['CH1', 'CH2'], rollFrom: 0.1, hasExt: true
   },
   rigol: {
-    id: 'rigol', name: 'RIGOL DS1104Z', nch: 4, bw: 100e6, bwProbeX1: 6e6,
-    vdivs: OL.seq125(0.001, 10), tdivs: OL.seq125(5e-9, 50),
-    srMax: 1e9, depth: 24e6, compVpp: 3, compFreq: 1000,
+    id: 'rigol', name: 'RIGOL DS1054Z', nch: 4, bw: 50e6, bwProbeX1: 6e6,
+    vdivs: OL.seq125(0.001, 10), tdivs: OL.seq125(5e-9, 50), autoMinF: 41, autoMinV: 0.02,
+    srMax: 1e9, depth: 12e6, compVpp: 3, compFreq: 1000,
     probes: [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000], hdiv: 12, vdiv: 8,
     colors: ['#f6e11a', '#19e0ff', '#ff3df0', '#2a73ff'], posUnit: 'V',
     chNames: ['CH1', 'CH2', 'CH3', 'CH4'], rollFrom: 0.2, hasExt: false
   }
 };
 OL.PROFILES.owon.sr = nCh => OL.PROFILES.owon.srMax;
+/* profondeurs mémoire proposées (RIGOL) selon le nombre de voies actives ; 'auto' = la plus grande */
+OL.PROFILES.rigol.memOpts = nCh => nCh <= 1 ? [12e3, 120e3, 1.2e6, 12e6] : nCh === 2 ? [6e3, 60e3, 600e3, 6e6] : [3e3, 30e3, 300e3, 3e6];
 OL.PROFILES.rigol.sr = nCh => (nCh <= 1 ? 1e9 : nCh === 2 ? 5e8 : 2.5e8);
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -385,7 +401,7 @@ SP.defaultSetup = function () {
     tdivIdx: OL.nearest(P.tdivs, 1e-3), hdelay: 0,
     ch: [], acq: 'sample', avgN: 16, dots: false, persist: 0, xy: false,
     trig: { src: 0, slope: 'rise', level: 0, mode: 'auto', coup: 'dc', holdoff: 100e-9, sweepForce: false },
-    math: { on: false, op: 'a-b' }, measure: [], cursors: { mode: 'off', x: [-2, 2], y: [-2, 2], src: 0 }, sel: 0
+    math: { on: false, op: 'a-b' }, xyPair: [0, 1], mem: 'auto', roll: false, measure: [], cursors: { mode: 'off', x: [-2, 2], y: [-2, 2], src: 0 }, sel: 0
   };
   for (let i = 0; i < P.nch; i++) this.st.ch.push({
     on: i === 0, vIdx: OL.nearest(P.vdivs, 1), pos: 0, coup: 'dc', probe: 10, inv: false, bw20: false });
@@ -395,15 +411,21 @@ SP.defaultSetup = function () {
 /* ----- accesseurs ----- */
 SP.tdiv = function () { return this.P.tdivs[this.st.tdivIdx]; };
 SP.window = function () { return this.tdiv() * this.P.hdiv; };
-SP.baseV = function (i) { return this.P.vdivs[this.st.ch[i].vIdx]; };           /* V/div à l'entrée */
+SP.baseV = function (i) { const c = this.st.ch[i]; return this.P.vdivs[c.vIdx] * (1 + 0.02 * (c.fk || 0)); };
+SP.fineStep = function (i, n) { const c = this.st.ch[i], v = this.P.vdivs, cap = Math.max(1, Math.floor((v[Math.min(c.vIdx + 1, v.length - 1)] / v[c.vIdx] - 1) / 0.02) - 1); c.fk = (c.fk || 0) + n; if (c.fk > cap) { if (c.vIdx < v.length - 1) { c.vIdx++; c.fk = 0; } else c.fk = cap; } if (c.fk < 0) { if (c.vIdx > 0) { c.vIdx--; c.fk = Math.max(0, Math.floor((v[c.vIdx + 1] / v[c.vIdx] - 1) / 0.02) - 1); } else c.fk = 0; } };
+SP.trigCh = function () { const s = this.st.trig.src; return s === 'line' ? 0 : s; };           /* V/div à l'entrée */
 SP.vdivLabel = function (i) { return this.baseV(i) * this.st.ch[i].probe; };   /* V/div affiché */
 SP.nOn = function () { return this.st.ch.filter(c => c.on).length; };
 SP.sampleRate = function () {
   const P = this.P, w = this.window();
   const srmax = P.sr(Math.max(1, this.nOn()));
-  return Math.min(srmax, P.depth / w);
+  return Math.min(srmax, this.depthNow() / w);
 };
-SP.isRoll = function () { return this.tdiv() >= this.P.rollFrom && !this.st.xy; };
+SP.depthNow = function () {
+  const P = this.P; if (!P.memOpts) return P.depth; const o = P.memOpts(Math.max(1, this.nOn())), m = this.st.mem;
+  return !m || m === 'auto' ? (this.nOn() >= 2 ? Math.min(3e6, o[o.length - 1]) : o[o.length - 1]) : (o.indexOf(m) >= 0 ? m : o[o.length - 1]);
+};
+SP.isRoll = function () { return this.P.id === 'rigol' ? (!!this.st.roll && this.tdiv() >= 0.2 && !this.st.xy) : (this.tdiv() >= this.P.rollFrom && !this.st.xy); };
 
 /* ----- chaîne verticale ----- */
 function lpStep(state, x, dt, tau) { const a = 1 - Math.exp(-dt / tau); return state + a * (x - state); }
@@ -465,7 +487,12 @@ SP.trigSignal = function (ts, shift) {
   return out;
 };
 SP.findTrigger = function (tStart, span) {
-  const st = this.st, t = st.trig, i = t.src, nd = this.nodeOf(i);
+  const st = this.st, t = st.trig, i = t.src;
+  if (i === 'line') {                       /* synchronisation sur le secteur 50 Hz (passage par zéro) */
+    const T = 0.02, up = Math.ceil(tStart / T) * T, dn = Math.ceil((tStart - T / 2) / T) * T + T / 2;
+    return t.slope === 'fall' ? dn : t.slope === 'both' ? Math.min(up, dn) : up;
+  }
+  const nd = this.nodeOf(i);
   if (!nd || !st.ch[i].on && false) return null;
   const f = nd.src.fhint ? nd.src.fhint() : 1e3;
   const dt = Math.max(1e-9, Math.min(1 / (60 * f), this.window() / 1500, span / 20));
@@ -505,12 +532,13 @@ SP.acquire = function (tLeft) {
     const c = st.ch[i]; if (!c.on && !(st.trig.src === i)) { rec.ch.push(null); continue; }
     const pre = this.preTime(i);
     /* peak detect : on suréchantillonne 8x puis on garde min/max par point d'écran */
-    const F = (st.acq === 'peak' && n > N) ? Math.max(8, Math.min(64, Math.ceil(rec.dt / 0.5e-6))) : 1;
+    const F = (st.acq === 'peak' && n > N) ? Math.max(8, Math.min(64, Math.ceil(rec.dt / 0.5e-6))) : (st.acq === 'hires' && n > N ? 8 : 1);
     const g = timeGrid(tLeft, rec.dt / F, N * F, pre), y = this.front(i, g.ts);
-    const out = new Float64Array(N), mn = F > 1 ? new Float64Array(N) : null, mx = F > 1 ? new Float64Array(N) : null;
+    const out = new Float64Array(N), pkm = st.acq === 'peak', mn = F > 1 && pkm ? new Float64Array(N) : null, mx = F > 1 && pkm ? new Float64Array(N) : null;
     const vk = this.baseV(i), noiseV = 0.0004 + vk * 0.003;
     for (let j = 0; j < N; j++) {
       if (F === 1) out[j] = y[g.m + j] + OL.gauss(this.rand) * noiseV;
+      else if (!pkm) { let s = 0; for (let q = 0; q < F; q++) s += y[g.m + j * F + q] + OL.gauss(this.rand) * noiseV; out[j] = s / F; }
       else {
         let a = Infinity, b = -Infinity;
         for (let q = 0; q < F; q++) { const v = y[g.m + j * F + q] + OL.gauss(this.rand) * noiseV; if (v < a) a = v; if (v > b) b = v; }
@@ -540,7 +568,7 @@ SP.tick = function (dtReal) {
   if (this.isRoll()) {                    /* mode ROLL : défilement sans déclenchement */
     this.status = 'ROLL'; this.scanEnd = this.simT; this.acquire(this.simT - w); return true;
   }
-  const t = st.trig, nd = this.nodeOf(t.src);
+  const t = st.trig, nd = t.src === 'line' ? true : this.nodeOf(t.src);
   const span = Math.max(0.05, w * 1.5);
   const start = Math.max(this.scanEnd || this.simT, this.simT - 2);   /* le balayage de déclenchement est continu */
   const tt = nd ? this.findTrigger(start, span) : null;
@@ -558,7 +586,7 @@ SP.tick = function (dtReal) {
 };
 /* compteur de fréquence matériel : fréquence du signal de déclenchement si l'appareil est déclenché */
 SP.counterFreq = function () {
-  const nd = this.nodeOf(this.st.trig.src); if (!nd || this.status !== "TRIG'D" && this.status !== 'STOP') return null;
+  const nd = this.st.trig.src === 'line' ? null : this.nodeOf(this.st.trig.src); if (!nd || this.status !== "TRIG'D" && this.status !== 'STOP') return null;
   if (!this.lastTrig) return null; const f = nd.src.fhint ? nd.src.fhint() : null; if (!f) return null;
   const nodeKey = nd.key; if (nd.src.kind === 'bridge' && nodeKey === 'out') return f * (nd.src.full ? 2 : 1);
   return f;
@@ -619,82 +647,111 @@ function histLevels(y) {
   if (!(mx > mn)) return { top: mx, base: mn, mn, mx };
   const B = 128, h = new Float64Array(B), w = (mx - mn) / B;
   for (const v of y) h[Math.min(B - 1, Math.floor((v - mn) / w))]++;
-  const half = B >> 1;
-  let ib = 0, it = half;
+  const half = B >> 1; let ib = 0, it = half;
   for (let i = 0; i < half; i++) if (h[i] > h[ib]) ib = i;
   for (let i = half; i < B; i++) if (h[i] > h[it]) it = i;
   return { top: mn + (it + 0.5) * w, base: mn + (ib + 0.5) * w, mn, mx };
 }
-/* franchissements d'un seuil : retourne tableaux de temps (indices fractionnaires) montants/descendants */
+/* franchissements d'un seuil (indices fractionnaires) */
 function crossings(y, lvl) {
   const up = [], dn = [];
-  for (let i = 1; i < y.length; i++) {
-    const a = y[i - 1], b = y[i];
-    if (a < lvl && b >= lvl) up.push(i - 1 + (lvl - a) / (b - a));
-    else if (a > lvl && b <= lvl) dn.push(i - 1 + (lvl - a) / (b - a));
-  }
+  for (let i = 1; i < y.length; i++) { const a = y[i - 1], b = y[i];
+    if (a < lvl && b >= lvl) up.push(i - 1 + (lvl - a) / (b - a)); else if (a > lvl && b <= lvl) dn.push(i - 1 + (lvl - a) / (b - a)); }
   return { up, dn };
 }
-function firstAfter(arr, x) { for (const v of arr) if (v > x) return v; return null; }
+const firstAfter = (arr, x) => { for (const v of arr) if (v > x) return v; return null; };
 
-/* y : Float64Array en volts ; dt : durée d'une colonne. Retourne un objet de mesures (null = "****"). */
-OL.measure = function (y, dt) {
-  const r = {}, N = y.length;
-  if (!y.length || y.some(isNaN)) { const yy = Array.from(y).filter(v => !isNaN(v)); if (!yy.length) return r; y = Float64Array.from(yy); }
-  const L = histLevels(y), amp = L.top - L.base;
-  let s = 0, s2 = 0; for (const v of y) { s += v; s2 += v * v; }
-  r.max = L.mx; r.min = L.mn; r.pp = L.mx - L.mn; r.avg = s / y.length; r.rms = Math.sqrt(s2 / y.length);
-  r.top = L.top; r.base = L.base; r.amp = amp;
+/* y : Float64Array en volts ; dt : durée d'une colonne ; origin : indice de la colonne du point de déclenchement */
+OL.measure = function (y, dt, origin) {
+  const r = {};
+  if (!y.length) return r;
+  if (y.some(isNaN)) { const yy = Array.from(y).filter(v => !isNaN(v)); if (!yy.length) return r; y = Float64Array.from(yy); }
+  const L = histLevels(y), amp = L.top - L.base; let s = 0, s2 = 0, imax = 0, imin = 0;
+  y.forEach((v, i) => { s += v; s2 += v * v; if (v > y[imax]) imax = i; if (v < y[imin]) imin = i; });
+  const n = y.length; r.max = L.mx; r.min = L.mn; r.pp = L.mx - L.mn; r.avg = s / n; r.rms = Math.sqrt(s2 / n);
+  r.top = L.top; r.base = L.base; r.amp = amp; r.area = s * dt; r.variance = s2 / n - (s / n) * (s / n);
+  r.upper = L.base + 0.9 * amp; r.mid = L.base + 0.5 * amp; r.lower = L.base + 0.1 * amp;
+  const o = origin === undefined ? n / 2 : origin; r.tvmax = (imax - o) * dt; r.tvmin = (imin - o) * dt;
   r.over = amp > 0 ? (L.mx - L.top) / amp * 100 : null; r.pre = amp > 0 ? (L.base - L.mn) / amp * 100 : null;
-  r.period = r.freq = r.rise = r.fall = r.pwidth = r.nwidth = r.pduty = r.nduty = r.cycAvg = r.cycRms = null;
+  ['period', 'freq', 'rise', 'fall', 'pwidth', 'nwidth', 'pduty', 'nduty', 'perrms', 'perarea', 'pslew', 'nslew', 'ppulses', 'npulses', 'pedges', 'nedges'].forEach(k => { r[k] = null; });
   if (amp > 0 && amp > 0.1 * r.pp) {
-    const mid = (L.top + L.base) / 2, c = crossings(y, mid);
+    const mid = r.mid, c = crossings(y, mid); r.pedges = c.up.length; r.nedges = c.dn.length;
+    r.ppulses = c.up.filter(u => { const d = firstAfter(c.dn, u); return d !== null; }).length; r.npulses = c.dn.filter(d => { const u = firstAfter(c.up, d); return u !== null; }).length;
     if (c.up.length >= 2) {
       const T = (c.up[1] - c.up[0]) * dt; r.period = T; r.freq = 1 / T;
-      const a = Math.round(c.up[0]), b = Math.round(c.up[1]);   /* moyenne et efficace sur une période entière */
-      let ss = 0, sq = 0, m = 0; for (let i = a; i < b; i++) { ss += y[i]; sq += y[i] * y[i]; m++; }
-      if (m) { r.cycAvg = ss / m; r.cycRms = Math.sqrt(sq / m); }
+      const a = Math.round(c.up[0]), b = Math.round(c.up[1]); let ss = 0, sq = 0, m = 0; for (let i = a; i < b; i++) { ss += y[i]; sq += y[i] * y[i]; m++; }
+      if (m) { r.perrms = Math.sqrt(sq / m); r.perarea = ss * dt; }
       const dn = firstAfter(c.dn, c.up[0]); if (dn !== null && dn < c.up[1]) { r.pwidth = (dn - c.up[0]) * dt; r.nwidth = T - r.pwidth; r.pduty = r.pwidth / T * 100; r.nduty = 100 - r.pduty; }
     } else if (c.dn.length >= 2) { const T = (c.dn[1] - c.dn[0]) * dt; r.period = T; r.freq = 1 / T; }
-    /* temps de montée 10-90 %, descente 90-10 % */
-    const l10 = L.base + 0.1 * amp, l90 = L.base + 0.9 * amp, c10 = crossings(y, l10), c90 = crossings(y, l90);
-    for (const t10 of c10.up) { const t90 = firstAfter(c90.up, t10); if (t90 !== null && (!c10.up.some(v => v > t10 && v < t90))) { r.rise = (t90 - t10) * dt; break; } }
-    for (const t90 of c90.dn) { const t10 = firstAfter(c10.dn, t90); if (t10 !== null && (!c90.dn.some(v => v > t90 && v < t10))) { r.fall = (t10 - t90) * dt; break; } }
+    const c10 = crossings(y, r.lower), c90 = crossings(y, r.upper);
+    for (const t10 of c10.up) { const t90 = firstAfter(c90.up, t10); if (t90 !== null && !c10.up.some(v => v > t10 && v < t90)) { r.rise = (t90 - t10) * dt; r.pslew = (r.upper - r.lower) / r.rise; break; } }
+    for (const t90 of c90.dn) { const t10 = firstAfter(c10.dn, t90); if (t10 !== null && !c90.dn.some(v => v > t90 && v < t10)) { r.fall = (t10 - t90) * dt; r.nslew = -(r.upper - r.lower) / r.fall; break; } }
   }
-  r.levels = L;
-  return r;
+  r.levels = L; return r;
 };
 
-/* Retard (délai) entre deux voies : A↑ -> B↑ au niveau 50 %. Retourne secondes (négatif si B avant A). */
-OL.delayAB = function (ya, yb, dt) {
-  const la = histLevels(ya), lb = histLevels(yb);
+/* Retard entre deux voies, au niveau 50 % : fronts montants ('up') ou descendants ('dn'). Négatif si B avant A. */
+OL.delayAB = function (ya, yb, dt, edge) {
+  edge = edge || 'up'; const la = histLevels(ya), lb = histLevels(yb);
   if (!(la.top - la.base > 0.1 * (la.mx - la.mn)) || !(lb.top - lb.base > 0.1 * (lb.mx - lb.mn))) return null;
-  const ca = crossings(ya, (la.top + la.base) / 2).up, cb = crossings(yb, (lb.top + lb.base) / 2).up;
+  const ca = crossings(ya, (la.top + la.base) / 2)[edge], cb = crossings(yb, (lb.top + lb.base) / 2)[edge];
   if (!ca.length || !cb.length) return null;
-  const a0 = ca.length > 1 ? ca[0] : ca[0], T = ca.length > 1 ? ca[1] - ca[0] : null;
-  /* plus proche front montant de B autour de A0, dans ±T/2 */
-  let best = null;
+  const a0 = ca[0], T = ca.length > 1 ? ca[1] - ca[0] : null; let best = null;
   for (const b of cb) { const d = b - a0; if (best === null || Math.abs(d) < Math.abs(best)) best = d; }
   if (T && Math.abs(best) > T / 2) best -= Math.sign(best) * T;
   return best * dt;
 };
-})(typeof window !== 'undefined' ? window : globalThis);
-(function (g) {
-const OL = g.OL;
-/* définition des mesures : n = nom OWON, r = nom RIGOL, u = unité */
+
+/* Définition des mesures : n = nom OWON, r = nom RIGOL, u = unité */
+const M = (n, r, u, v) => ({ n, r, u, v });
 OL.MEAS = {
-  max: { n: 'Max', r: 'Vmax', u: 'V', v: r => r.max }, min: { n: 'Min', r: 'Vmin', u: 'V', v: r => r.min },
-  pp: { n: 'Pk-Pk', r: 'Vpp', u: 'V', v: r => r.pp }, top: { n: 'Vtop', r: 'Vtop', u: 'V', v: r => r.top },
-  base: { n: 'Vbase', r: 'Vbase', u: 'V', v: r => r.base }, amp: { n: 'Vamp', r: 'Vamp', u: 'V', v: r => r.amp },
-  avg: { n: 'Mean', r: 'Vavg', u: 'V', v: r => r.avg }, rms: { n: 'Vrms', r: 'Vrms', u: 'V', v: r => r.rms },
-  cycavg: { n: 'CMean', r: 'Cycle Vavg', u: 'V', v: r => r.cycAvg }, cycrms: { n: 'CRMS', r: 'Cycle Vrms', u: 'V', v: r => r.cycRms },
-  over: { n: 'Overshoot', r: 'Overshoot', u: '%', v: r => r.over }, pre: { n: 'Preshoot', r: 'Preshoot', u: '%', v: r => r.pre },
-  freq: { n: 'Freq', r: 'Freq', u: 'Hz', v: r => r.freq }, period: { n: 'Period', r: 'Period', u: 's', v: r => r.period },
-  rise: { n: 'Rise', r: 'Rise Time', u: 's', v: r => r.rise }, fall: { n: 'Fall', r: 'Fall Time', u: 's', v: r => r.fall },
-  pwidth: { n: '+Width', r: '+Width', u: 's', v: r => r.pwidth }, nwidth: { n: '-Width', r: '-Width', u: 's', v: r => r.nwidth },
-  pduty: { n: '+Duty', r: '+Duty', u: '%', v: r => r.pduty }, nduty: { n: '-Duty', r: '-Duty', u: '%', v: r => r.nduty }
+  max: M('Vmax', 'Vmax', 'V', r => r.max), min: M('Vmin', 'Vmin', 'V', r => r.min), pp: M('Vpp', 'Vpp', 'V', r => r.pp),
+  top: M('Vtop', 'Vtop', 'V', r => r.top), base: M('Vbase', 'Vbase', 'V', r => r.base), amp: M('Vamp', 'Vamp', 'V', r => r.amp),
+  upper: M('Vupper', 'Vupper', 'V', r => r.upper), mid: M('Vmid', 'Vmid', 'V', r => r.mid), lower: M('Vlower', 'Vlower', 'V', r => r.lower),
+  avg: M('Vavg', 'Vavg', 'V', r => r.avg), rms: M('Vrms', 'Vrms', 'V', r => r.rms), perrms: M('Per.Vrms', 'Per.Vrms', 'V', r => r.perrms),
+  over: M('Overshoot', 'Overshoot', '%', r => r.over), pre: M('Preshoot', 'Preshoot', '%', r => r.pre),
+  area: M('Area', 'Area', 'Vs', r => r.area), perarea: M('Period Area', 'Period Area', 'Vs', r => r.perarea), variance: M('Variance', 'Variance', 'V²', r => r.variance),
+  period: M('Period', 'Period', 's', r => r.period), freq: M('Freq', 'Freq', 'Hz', r => r.freq),
+  rise: M('Rise time', 'Rise Time', 's', r => r.rise), fall: M('Fall time', 'Fall Time', 's', r => r.fall),
+  pwidth: M('+Width', '+Width', 's', r => r.pwidth), nwidth: M('-Width', '-Width', 's', r => r.nwidth),
+  pduty: M('+Duty', '+Duty', '%', r => r.pduty), nduty: M('-Duty', '-Duty', '%', r => r.nduty),
+  tvmax: M('tVmax', 'tVmax', 's', r => r.tvmax), tvmin: M('tVmin', 'tVmin', 's', r => r.tvmin),
+  pslew: M('+Slew Rate', '+Slew Rate', 'V/s', r => r.pslew), nslew: M('-Slew Rate', '-Slew Rate', 'V/s', r => r.nslew),
+  ppulses: M('+Pulses', '+Pulses', '', r => r.ppulses), npulses: M('-Pulses', '-Pulses', '', r => r.npulses),
+  pedges: M('+Edges', '+Edges', '', r => r.pedges), nedges: M('-Edges', '-Edges', '', r => r.nedges)
 };
-OL.fmtMeas = function (def, v) { return v === null || v === undefined || !isFinite(v) ? '****' : def.u === '%' ? OL.fmtNum(v, 1) + '%' : OL.fmt(v, def.u, 4); };
+/* mesures entre deux voies */
+OL.MEAS2 = { rdelay: 'RDelay', fdelay: 'FDelay', rphase: 'RPhase', fphase: 'FPhase', delay: 'Delay' };
+/* listes proposées par chaque appareil (d'après leurs notices) */
+OL.OWON_MEAS = ['pp', 'max', 'min', 'avg', 'rms', 'top', 'base', 'amp', 'over', 'pre', 'freq', 'period', 'rise', 'fall', 'pwidth', 'nwidth', 'pduty', 'nduty'];
+OL.RIGOL_H = ['period', 'freq', 'rise', 'fall', 'pwidth', 'nwidth', 'pduty', 'nduty', 'tvmax', 'tvmin', 'pslew', 'nslew', 'ppulses', 'npulses', 'pedges', 'nedges'];
+OL.RIGOL_V = ['max', 'min', 'pp', 'top', 'base', 'amp', 'upper', 'mid', 'lower', 'avg', 'rms', 'perrms', 'over', 'pre', 'area', 'perarea', 'variance'];
+OL.fmtMeas = function (def, v) {
+  if (v === null || v === undefined || !isFinite(v)) return '****';
+  if (def.u === '%') return OL.fmtNum(v, 1) + '%'; if (def.u === '') return String(Math.round(v));
+  return OL.fmt(v, def.u, 4);
+};
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script><script>
+/* meas_ui.js — liste des mesures affichées (commune aux deux appareils) */
+(function (g) {
+'use strict';
+const OL = g.OL = g.OL || {};
+/* m = { id, key, a, b? } ; retourne { label, val, ci } */
+OL.measValue = function (S, m, dev) {
+  const nm = k => (dev === 'rigol' ? OL.MEAS[k].r : OL.MEAS[k].n);
+  const cn = S.P.chNames;
+  if (OL.MEAS2[m.key]) {
+    const a = S.volts(m.a), b = S.volts(m.b); const lab = (dev === 'rigol' ? OL.MEAS2[m.key] : 'Delay') + ' ' + cn[m.a] + '→' + cn[m.b] + (dev === 'rigol' ? '' : (m.key === 'fdelay' ? ' ↓' : ' ↑')); let val = '****';
+    if (a && b) { const dt = S.window() / a.length, edge = (m.key === 'fdelay' || m.key === 'fphase') ? 'dn' : 'up', d = OL.delayAB(a, b, dt, edge), ma = OL.measure(a, dt);
+      if (d !== null) val = (m.key === 'rphase' || m.key === 'fphase') ? (ma.period ? OL.fmtNum(d / ma.period * 360, 1) + '°' : '****') : OL.fmt(d, 's', 4); }
+    return { label: lab, val, ci: m.a };
+  }
+  const v = S.volts(m.a); const r = v ? OL.measure(v, S.window() / v.length, v.length / 2 - S.st.hdelay / (S.window() / v.length)) : null; const def = OL.MEAS[m.key];
+  return { label: cn[m.a] + ' ' + nm(m.key), val: r ? OL.fmtMeas(def, def.v(r)) : '****', ci: m.a };
+};
+OL.toggleMeas = function (list, m, max) { const i = list.findIndex(x => x.id === m.id); if (i >= 0) list.splice(i, 1); else { if (list.length >= max) list.shift(); list.push(m); } };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script><script>
@@ -714,7 +771,7 @@ OL.Scope.prototype.autoset = function (opts) {
     const T = 1 / f, N = 4000; let mn = Infinity, mx = -Infinity, sm = 0;
     for (let k = 0; k < N; k++) { const v = nd.fn(k * 6 * T / N + 0.00123); if (v < mn) mn = v; if (v > mx) mx = v; sm += v; }
     const sw = S.bench.ch[i].sw, att = sw === 10 ? 0.1 : 1;
-    first.push({ i, f, pp: (mx - mn), mn, mx, mean: sm / N, ok: f >= 20 && (mx - mn) >= 0.005 });
+    first.push({ i, f, pp: (mx - mn), mn, mx, mean: sm / N, ok: f >= P.autoMinF && (mx - mn) * (sw === 10 ? 1 : 1) >= P.autoMinV });
   }
   const ok = first.filter(x => x.ok);
   if (!ok.length) { S.autosetMsg = 'Signal introuvable'; return false; }
@@ -743,6 +800,7 @@ OL.Scope.prototype.autoset = function (opts) {
   st.trig.src = lead.i; st.trig.slope = 'rise'; st.trig.mode = 'auto'; st.trig.coup = 'dc';
   st.trig.level = ((lead.mn + lead.mx) / 2) * (S.bench.ch[lead.i].sw === 10 ? 0.1 : 1) * st.ch[lead.i].probe;
   S.sel = lead.i; st.sel = lead.i;
+  S.lastAuto = { per: per, lead: lead.i };
   S.resetAvg(); return true;
 };
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -875,6 +933,27 @@ OL.rrect = function (c, x, y, w, h, r, fill, stroke, lw) {
   if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw || 1; c.stroke(); }
 };
 })(typeof window !== 'undefined' ? window : globalThis);
+(function (g) {
+const OL = g.OL;
+/* persistance : les tracés précédents s'effacent progressivement (ou jamais pour « Infinite ») */
+OL.persistDraw = function (U, S, c, W, H, persist, drawFn) {
+  if (!persist) { drawFn(c); return; }
+  if (!U.gc) { U.gc = document.createElement('canvas'); U.gc.width = W; U.gc.height = H; U.gx = U.gc.getContext('2d'); }
+  if (U.ghost === null) { U.gx.clearRect(0, 0, W, H); U.ghost = 1; }
+  if (S.version !== U.pv) {
+    U.pv = S.version;
+    if (persist < 90) { U.gx.save(); U.gx.globalCompositeOperation = 'destination-out'; U.gx.fillStyle = 'rgba(0,0,0,' + (1 - Math.exp(-0.04 / persist)) + ')'; U.gx.fillRect(0, 0, W, H); U.gx.restore(); }
+    drawFn(U.gx);
+  }
+  c.drawImage(U.gc, 0, 0);
+};
+const og = OL.drawGrid;
+/* variante : mode 'none' (cadre seul) et luminosité réglable */
+OL.drawGrid2 = function (c, R, mode, bright, base) {
+  const k = Math.round(25 + 1.5 * (bright === undefined ? 50 : bright)), line = 'rgb(' + k + ',' + k + ',' + k + ')';
+  og(c, R, Object.assign({ full: mode === 'full', line, axis: mode === 'none' ? 'rgba(0,0,0,0)' : '#8a8a8a', frame: '#9a9a9a' }, base || {}));
+};
+})(typeof window !== 'undefined' ? window : globalThis);
 
 </script><script>
 /* ui_owon.js — face avant et écran de l'OWON SDS5032E(V) */
@@ -956,7 +1035,7 @@ OL.OwonUI = function (root, S) {
   OL.Label(box, 858, 180, 'Trigger', 'zl', 66);
   bk.trigmenu = OL.Key(box, { x: 866, y: 198, w: 50, h: 28, label: 'Menu', cls: 'darkblue2', on: () => openMenu('trig') });
   OL.Label(box, 858, 232, 'TRIG LEVEL', 'zl', 66);
-  OL.Knob(box, { x: 891, y: 268, r: 17, cls: 'smk', turn: n => level(n), push: () => level50() });
+  OL.Knob(box, { x: 891, y: 268, r: 17, cls: 'smk', turn: n => level(n) });
   bk.p50 = OL.Key(box, { x: 866, y: 308, w: 50, h: 28, label: '50%', cls: 'white', on: () => level50() });
   bk.force = OL.Key(box, { x: 866, y: 352, w: 50, h: 28, label: 'Force', cls: 'white', on: () => S.force() });
   /* BNC */
@@ -986,8 +1065,8 @@ OL.OwonUI = function (root, S) {
   }
   function clampD(v) { return Math.max(-5.9, Math.min(5.9, v)); }
   function vposPush(i) { st.ch[i].pos = 0; }
-  function vdiv(i, n) { const c = st.ch[i]; c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx + n)); S.resetAvg(); }
-  function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx + n)); S.resetAvg(); st.hdelay = hclamp(st.hdelay); }
+  function vdiv(i, n) { const c = st.ch[i]; c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx - n)); S.resetAvg(); }
+  function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx - n)); S.resetAvg(); st.hdelay = hclamp(st.hdelay); }
   function level(n) {
     if (U.trigKnob === 'holdoff') { st.trig.holdoff = Math.max(100e-9, Math.min(1.5, st.trig.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); return; }
     const lab = Math.abs(S.vdivLabel(st.trig.src)); st.trig.level += n * lab / 25;
@@ -1016,7 +1095,7 @@ OL.OwonUI = function (root, S) {
   });
   menus.trig = () => { const t = st.trig; return [
     { label: 'Single', val: () => 'Edge', opts: [opt('Edge', () => { })] },
-    { label: 'Source', val: () => P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })).concat([opt('EXT', () => msg('EXT : non câblé'))]) },
+    { label: 'Source', val: () => t.src === 'line' ? 'AC Line' : P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })).concat([opt('EXT', () => msg('EXT : entrée non câblée dans ce simulateur')), opt('AC Line', () => { t.src = 'line'; })]) },
     { label: 'Coupling', val: () => ({ dc: 'DC', ac: 'AC', hf: 'HF', lf: 'LF' })[t.coup], opts: [opt('DC', () => { t.coup = 'dc'; }), opt('AC', () => { t.coup = 'ac'; }), opt('HF Reject', () => { t.coup = 'hf'; }), opt('LF Reject', () => { t.coup = 'lf'; })] },
     { label: 'Slope', val: () => t.slope === 'rise' ? '↗' : '↘', opts: [opt('↗ Rising', () => { t.slope = 'rise'; }), opt('↘ Falling', () => { t.slope = 'fall'; })] },
     { label: 'Auto', val: () => '&Holdoff', labelf: () => ({ auto: 'Auto', normal: 'Normal', single: 'Single' })[t.mode], knob: n => { t.holdoff = Math.max(100e-9, Math.min(1.5, t.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); },
@@ -1025,16 +1104,14 @@ OL.OwonUI = function (root, S) {
     { label: 'Main TB', val: () => 'Window', opts: [opt('Main TB', () => { })] },
     { label: 'Holdoff', val: () => OL.fmt(st.trig.holdoff, 's'), knob: n => { st.trig.holdoff = Math.max(100e-9, Math.min(1.5, st.trig.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); }, opts: [opt('Reset', () => { st.trig.holdoff = 100e-9; })] },
     { label: 'Trig knob', val: () => U.trigKnob === 'level' ? 'Level' : 'Holdoff', opts: [opt('Level', () => { U.trigKnob = 'level'; }), opt('Holdoff', () => { U.trigKnob = 'holdoff'; })] }];
-  const MV = ['max', 'min', 'pp', 'top', 'base', 'amp', 'avg', 'rms', 'cycavg', 'cycrms', 'over', 'pre'], MT = ['freq', 'period', 'rise', 'fall', 'pwidth', 'nwidth', 'pduty', 'nduty'];
-  const addMeas = (key, ch) => { const k = ch + key; const i = U.meas.findIndex(m => m.id === k); if (i >= 0) U.meas.splice(i, 1); else { if (U.meas.length >= 8) U.meas.shift(); U.meas.push({ id: k, key, ch }); } };
-  const listOpts = keys => keys.map(k => ({ t: OL.MEAS[k].n + (U.meas.some(m => m.id === U.measCh + k) ? ' ✓' : ''), f: () => addMeas(k, U.measCh), dyn: true }));
+  const MK = OL.OWON_MEAS.concat(['rdelay', 'fdelay']), mname = k => k === 'rdelay' ? 'Delay A→B ↑' : k === 'fdelay' ? 'Delay A→B ↓' : OL.MEAS[k].n;
+  const addM = () => { const k = MK[U.mType || 0]; OL.toggleMeas(U.meas, OL.MEAS2[k] ? { id: k, key: k, a: 0, b: 1 } : { id: U.measCh + k, key: k, a: U.measCh }, 8); };
+  const rmM = () => { const k = MK[U.mType || 0], id = OL.MEAS2[k] ? k : U.measCh + k; const i = U.meas.findIndex(x => x.id === id); if (i >= 0) U.meas.splice(i, 1); };
+  const mTypeKnob = n => { U.mType = ((U.mType || 0) + n + MK.length) % MK.length; };
+  const typeOpt = () => ({ t: () => 'Type<br>' + mname(MK[U.mType || 0]), f: () => { } }), srcOpt = () => ({ t: () => 'Source<br>' + P.chNames[U.measCh], f: () => { U.measCh = (U.measCh + 1) % P.nch; } });
   menus.measure = () => [
-    { label: 'Source', val: () => P.chNames[U.measCh], opts: P.chNames.map((n, k) => opt(n, () => { U.measCh = k; })) },
-    { label: 'Voltage', val: () => '', opts: () => listOpts(MV) , paged: true },
-    { label: 'Time', val: () => '', opts: () => listOpts(MT), paged: true },
-    { label: 'Delay', val: () => '', opts: () => [opt('CH1→CH2 ↑ (retard)', () => addDelay('delay')), opt('CH1→CH2 ↑ (phase)', () => addDelay('phase'))] },
-    { label: 'Clear', val: () => '', opts: [opt('Effacer tout', () => { U.meas.length = 0; })] }];
-  function addDelay(kind) { const id = 'D' + kind; const i = U.meas.findIndex(m => m.id === id); if (i >= 0) U.meas.splice(i, 1); else { if (U.meas.length >= 8) U.meas.shift(); U.meas.push({ id, key: kind, ch: 0, delay: true }); } }
+    { label: 'Add', val: () => '', knob: mTypeKnob, opts: [typeOpt(), srcOpt(), { t: '', f: () => { } }, { t: 'Add', f: addM }, { t: '', f: () => { } }] },
+    { label: 'Remove', val: () => '', knob: mTypeKnob, opts: [typeOpt(), srcOpt(), { t: 'Remove', f: rmM }, { t: 'Remove<br>All', f: () => { U.meas.length = 0; } }, { t: '', f: () => { } }] }];
   menus.cursor = () => [
     { label: 'Type', val: () => ({ off: 'Off', v: 'Voltage', t: 'Time' })[U.cur.type], opts: [opt('Off', () => { U.cur.type = 'off'; }), opt('Voltage', () => { U.cur.type = 'v'; }), opt('Time', () => { U.cur.type = 't'; })] },
     { label: 'Source', val: () => P.chNames[U.cur.src], opts: P.chNames.map((n, k) => opt(n, () => { U.cur.src = k; })) },
@@ -1047,7 +1124,7 @@ OL.OwonUI = function (root, S) {
   menus.display = () => [
     { label: 'Type', val: () => st.dots ? 'Dots' : 'Vect', opts: [opt('Vect', () => { st.dots = false; }), opt('Dots', () => { st.dots = true; })] },
     { label: 'Format', val: () => st.xy ? 'XY' : 'YT', opts: [opt('YT', () => { st.xy = false; }), opt('XY', () => { st.xy = true; })] },
-    { label: 'Persist', val: () => ({ 0: 'Off', 1: '1s', 2: '2s', 5: '5s', 99: 'Inf' })[st.persist], opts: [[0, 'Off'], [1, '1 s'], [2, '2 s'], [5, '5 s'], [99, 'Infinite']].map(([v, t]) => opt(t, () => { st.persist = v; U.ghost = null; })) },
+    { label: 'Persist', val: () => ({ 0: 'Off', 1: '1s', 2: '2s', 5: '5s', 99: 'Inf' })[st.persist] || 'Off', opts: [[0, 'Off'], [1, '1 s'], [2, '2 s'], [5, '5 s'], [99, 'Infinite']].map(([v, t]) => opt(t, () => { st.persist = v; U.ghost = null; })) },
     { label: 'Grid', val: () => U.gridMode === 'cross' ? 'Axes' : 'Full', opts: [opt('Full', () => { U.gridMode = 'full'; }), opt('Axes', () => { U.gridMode = 'cross'; })] }];
   menus.utility = () => [
     { label: 'Self Cal', val: () => '', opts: [opt('Exécuter', () => { U.selfcal = performance.now(); })] },
@@ -1060,7 +1137,7 @@ OL.OwonUI = function (root, S) {
     { label: 'Recall', val: () => '', opts: [opt('Rappeler', () => { if (mem.s) { Object.assign(st, JSON.parse(mem.s)); msg('Réglages rappelés'); } else msg('Mémoire vide'); })] },
     { label: 'Default', val: () => '', opts: [opt('Réglages d\'usine', () => { S.defaultSetup(); U.meas.length = 0; U.cur.type = 'off'; msg('Réglages d\'usine'); })] }];
   menus.math = () => [
-    { label: 'Operation', val: () => ({ 'a+b': 'CH1+CH2', 'a-b': 'CH1-CH2', 'a*b': 'CH1×CH2' })[st.math.op], opts: [opt('CH1+CH2', () => { st.math.op = 'a+b'; }), opt('CH1-CH2', () => { st.math.op = 'a-b'; }), opt('CH1×CH2', () => { st.math.op = 'a*b'; })] }];
+    { label: 'Operation', val: () => ({ 'a+b': 'CH1+CH2', 'a-b': 'CH1-CH2', 'a*b': 'CH1×CH2', 'a/b': 'CH1÷CH2' })[st.math.op], opts: [opt('CH1+CH2', () => { st.math.op = 'a+b'; }), opt('CH1-CH2', () => { st.math.op = 'a-b'; }), opt('CH1×CH2', () => { st.math.op = 'a*b'; }), opt('CH1÷CH2', () => { st.math.op = 'a/b'; })] }];
   function pressH(i) {
     const m = menus[U.menu]; if (!m) return; const it = m()[i]; if (!it) return;
     if (it.opts) { U.open = (U.open === i) ? -1 : i; U.page = 0; }
@@ -1108,8 +1185,7 @@ OL.OwonUI = function (root, S) {
     OL.drawGrid(c, GR, { full: U.gridMode !== 'cross', line: '#585858', axis: '#9b9b9b', frame: '#bdbdbd' });
     const dh = GR.h / 8, cy = GR.y + GR.h / 2;
     /* tracés */
-    if (rec) {
-      const ghost = st.persist ? (U.ghost || (U.ghost = [])) : null;
+    if (rec) OL.persistDraw(U, S, c, 800, 600, st.persist, c => {
       if (st.xy) { const a = sc.divs(0), b = sc.divs(1); OL.drawXY(c, GR, a, b, cols[0]); }
       else for (let i = 0; i < P.nch; i++) {
         if (!st.ch[i].on) continue;
@@ -1118,16 +1194,16 @@ OL.OwonUI = function (root, S) {
       }
       if (st.math.on && st.ch[0].on && st.ch[1].on && !st.xy) {
         const v0 = sc.volts(0), v1 = sc.volts(1), m = new Float64Array(v0.length), lab = Math.abs(sc.vdivLabel(0));
-        for (let j = 0; j < m.length; j++) { const a = v0[j], b = v1[j]; const r = st.math.op === 'a+b' ? a + b : st.math.op === 'a-b' ? a - b : a * b; m[j] = Math.max(-4.2, Math.min(4.2, r / lab)); }
+        for (let j = 0; j < m.length; j++) { const a = v0[j], b = v1[j]; const r = st.math.op === 'a+b' ? a + b : st.math.op === 'a-b' ? a - b : st.math.op === 'a*b' ? a * b : (b ? a / b : 0); m[j] = Math.max(-4.2, Math.min(4.2, r / lab)); }
         OL.drawTrace(c, GR, m, '#c050ff', {});
       }
-    }
+    });
     /* marqueurs de position (gauche) et de niveau de déclenchement (droite) */
     for (let i = 0; i < P.nch; i++) if (st.ch[i].on) {
       const y = cy - st.ch[i].pos * dh; c.fillStyle = cols[i]; c.beginPath(); c.moveTo(0, y - 9); c.lineTo(14, y - 9); c.lineTo(20, y); c.lineTo(14, y + 9); c.lineTo(0, y + 9); c.closePath(); c.fill();
       OL.text(c, String(i + 1), 7, y + 1, { size: 12, color: '#000', align: 'center', bold: true });
     }
-    { const t = st.trig, lab = Math.abs(sc.vdivLabel(t.src)), y = Math.max(GR.y + 4, Math.min(GR.y + GR.h - 4, cy - (t.level / lab + st.ch[t.src].pos) * dh));
+    if (st.trig.src !== 'line') { const t = st.trig, lab = Math.abs(sc.vdivLabel(t.src)), y = Math.max(GR.y + 4, Math.min(GR.y + GR.h - 4, cy - (t.level / lab + st.ch[t.src].pos) * dh));
       c.fillStyle = '#d8d8ff'; c.beginPath(); c.moveTo(800, y); c.lineTo(786, y - 8); c.lineTo(786, y + 8); c.closePath(); c.fill(); OL.text(c, 'T', 792, y + 1, { size: 9, color: '#000', align: 'center', bold: true }); }
     /* curseurs */
     if (U.cur.type !== 'off') drawCursors(c);
@@ -1175,13 +1251,9 @@ OL.OwonUI = function (root, S) {
   }
   function drawMeas(c) {
     if (!U.meas.length) return;
-    const cache = {}; const lines = U.meas.map(m => {
-      if (m.delay) { const a = S.volts(0), b = S.volts(1); if (!a || !b) return { c: '#fff', t: '****' }; const d = OL.delayAB(a, b, S.window() / a.length); const m0 = OL.measure(a, S.window() / a.length); if (d === null) return { c: '#fff', t: (m.key === 'phase' ? 'Phase' : 'Delay') + ' ****' }; if (m.key === 'delay') return { c: '#fff', t: 'Delay 1→2: ' + OL.fmt(d, 's', 4) }; return { c: '#fff', t: m0.period ? 'Phase 1→2: ' + OL.fmtNum(d / m0.period * 360, 1) + '°' : 'Phase ****' }; }
-      const r = cache[m.ch] || (cache[m.ch] = U.measureOf(m.ch)); const def = OL.MEAS[m.key];
-      return { c: cols[m.ch], t: P.chNames[m.ch] + ' ' + def.n + ': ' + (r ? OL.fmtMeas(def, def.v(r)) : '****') };
-    });
-    const w = 214, h = 8 + lines.length * 21; OL.rrect(c, GR.x + 4, GR.y + 4, w, h, 5, 'rgba(0,0,0,.72)', '#667', 1);
-    lines.forEach((l, k) => OL.text(c, l.t.replace('µ', 'u').replace(/(\d),(\d)/g, '$1.$2'), GR.x + 12, GR.y + 18 + k * 21, { size: 15, color: l.c }));
+    const lines = U.meas.map(m => OL.measValue(S, m, 'owon'));
+    const h = 8 + lines.length * 21; OL.rrect(c, GR.x + 4, GR.y + 4, 232, h, 5, 'rgba(0,0,0,.72)', '#667', 1);
+    lines.forEach((l, k) => OL.text(c, (l.label + ': ' + l.val).replace('µ', 'u').replace(/(\d),(\d)/g, '$1.$2'), GR.x + 12, GR.y + 18 + k * 21, { size: 15, color: cols[l.ci] }));
   }
   function drawMenu(c) {
     if (!U.menu) return; const mf = menus[U.menu]; if (!mf) return; const items = mf();
@@ -1201,6 +1273,12 @@ OL.OwonUI = function (root, S) {
         const t = typeof o.t === 'function' ? o.t() : o.t; const parts = String(t).split('<br>'); parts.forEach((p, q) => OL.text(c, p, 744, y + 26 + (q - (parts.length - 1) / 2) * 17, { size: 15, align: 'center' })); });
     }
   }
+  /* repères des commandes (pour le bouton « Montre-moi » des TP) */
+  U.ctl = {}; const KM = { Measure: 'measure', Acquire: 'acquire', Autoset: 'autoset', Utility: 'utility', Cursor: 'cursor', Autoscale: 'autoscale', Save: 'save', Display: 'display', Help: 'help', Copy: 'copy', 'Run/Stop': 'run', Single: 'single', CH1: 'ch1', CH2: 'ch2', Math: 'math', HORIZ: 'horiz', Menu: 'trigmenu', '50%': 'p50', Force: 'force', Menuoff: 'menuoff' };
+  box.querySelectorAll('button.key').forEach(b => { const tx = b.textContent.trim(); const id = KM[tx] || (/^[HF][1-5]$/.test(tx) ? tx.toLowerCase() : null); if (id) U.ctl[id] = b; });
+  ['m', 'vpos1', 'vdiv1', 'vpos2', 'vdiv2', 'hpos', 'secdiv', 'level'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.knob')[i]; });
+  ['bnc1', 'bnc2', 'bnc3'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.bnc')[i]; }); U.ctl.comp = box.querySelector('.comp-term');
+  U.flash = ids => { [].concat(ids).forEach(id => { const e = U.ctl[id]; if (!e) return; e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); setTimeout(() => e.classList.remove('flash'), 3600); }); };
   U.tickFrame = function (dt) {
     if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset({ keep: true }); } }
     bk.run.setLed(st.run); bk.run.classList.toggle('stopped', !st.run);
@@ -1209,7 +1287,7 @@ OL.OwonUI = function (root, S) {
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script><script>
-/* ui_rigol.js — face avant et écran du RIGOL DS1104Z (Plus) */
+/* ui_rigol.js — face avant et écran du RIGOL DS1054Z (famille DS1000Z) */
 (function (g) {
 'use strict';
 const OL = g.OL = g.OL || {};
@@ -1225,8 +1303,8 @@ OL.RigolUI = function (root, S) {
   E('div', 'r-bezel', box, { left: '70px', top: '34px', width: '588px', height: '364px' });
   const cv = E('canvas', 'r-screen', box, { left: '95px', top: '56px', width: '540px', height: '324px' }); cv.width = 800; cv.height = 480; U.cv = cv;
   const ctx = cv.getContext('2d');
-  E('div', 'r-brand', box, { left: '74px', top: '4px' }, '<b>RIGOL</b><i>DS1104Z <u style="font-size:10px">Plus</u></i>');
-  E('div', 'r-sub', box, { left: '300px', top: '12px' }, 'DIGITAL OSCILLOSCOPE &nbsp; 100&nbsp;MHz &nbsp; 1&nbsp;GSa/s &nbsp; 24&nbsp;Mpts');
+  E('div', 'r-brand', box, { left: '74px', top: '4px' }, '<b>RIGOL</b><i>DS1054Z</i>');
+  E('div', 'r-sub', box, { left: '300px', top: '12px' }, 'DIGITAL OSCILLOSCOPE &nbsp; 50&nbsp;MHz &nbsp; 1&nbsp;GSa/s &nbsp; 12&nbsp;Mpts');
 
   /* touches programmables */
   const sk = [];
@@ -1236,10 +1314,12 @@ OL.RigolUI = function (root, S) {
   };
   const rs = [], ls = [];
   for (let i = 0; i < 6; i++) { ls.push(mkSoft('l', i)); rs.push(mkSoft('r', i)); }
-  OL.Key(box, { x: 28, y: 44, w: 46, h: 26, label: 'MENU', cls: 'rkey arrow', on: () => { U.qm = U.qm === null ? 0 : (U.qm === 0 ? 1 : null); } });
+  OL.Key(box, { x: 28, y: 44, w: 46, h: 26, label: 'MENU', cls: 'rkey arrow', on: () => { U.qm = U.qm === null ? 0 : (U.qm === 0 ? 1 : null); U.qmPage = 0; } });
   OL.Key(box, { x: 676, y: 44, w: 46, h: 26, label: '▲', cls: 'rkey arrow', on: () => { U.page = Math.max(0, U.page - 1); } });
   OL.Key(box, { x: 676, y: 352, w: 46, h: 26, label: '▼', cls: 'rkey arrow', on: () => { U.page = U.page + 1; } });
-  OL.Key(box, { x: 28, y: 352, w: 46, h: 26, label: '▼', cls: 'rkey arrow', on: () => { } });
+  const qmN = () => Math.ceil((U.qm === 1 ? OL.RIGOL_V : OL.RIGOL_H).length / 6);
+  OL.Key(box, { x: 28, y: 336, w: 46, h: 22, label: '▲', cls: 'rkey arrow', on: () => { U.qmPage = Math.max(0, (U.qmPage || 0) - 1); } });
+  OL.Key(box, { x: 28, y: 362, w: 46, h: 22, label: '▼', cls: 'rkey arrow', on: () => { U.qmPage = Math.min(qmN() - 1, (U.qmPage || 0) + 1); } });
 
   const K = (x, y, w, h, label, cls, fn) => OL.Key(box, { x, y, w, h, label, cls: 'rkey ' + cls, on: fn });
   /* rangée du haut */
@@ -1251,8 +1331,8 @@ OL.RigolUI = function (root, S) {
   const bHelp = K(1020, 96, 50, 24, 'Help', 'green', () => { U.help = !U.help; });
   K(1020, 128, 50, 24, '🖶', 'green', () => copyShot());
   /* bouton multifonction + touches de menu */
-  OL.Knob(box, { x: 760, y: 118, r: 26, cls: 'rk', turn: n => mfKnob(n), push: () => mfPush(), title: 'Bouton multifonction' });
-  OL.Label(box, 724, 150, 'MULTIFONCTION', 'rl', 72);
+  OL.Knob(box, { x: 760, y: 118, r: 26, cls: 'rk', turn: n => mfKnob(n), push: () => mfPush(), title: 'Bouton multifonction : sert à choisir dans les menus ; sans menu, règle l\'intensité du tracé' });
+  OL.Label(box, 724, 150, 'Intensity', 'rl', 72);
   const mname = [['Measure', 'measure'], ['Acquire', 'acquire'], ['Storage', 'storage'], ['Cursor', 'cursor'], ['Display', 'display'], ['Utility', 'utility']];
   mname.forEach(([lab, id], k) => K(826 + (k % 3) * 64, 96 + Math.floor(k / 3) * 34, 58, 26, lab, 'light', () => openMenu(id)));
 
@@ -1262,11 +1342,10 @@ OL.RigolUI = function (root, S) {
   for (let i = 0; i < 4; i++) {
     const k = K(738, 186 + i * 36, 46, 26, 'CH' + (i + 1), 'ring', () => chKey(i)); k.style.borderColor = cols[i]; k.style.boxShadow = '0 0 0 1px ' + cols[i] + ', 0 2px 0 #14161a'; chk.push(k);
   }
-  K(738, 330, 46, 26, 'LA', 'ring', () => msg('Analyseur logique : non disponible'));
   K(800, 336, 40, 24, 'MATH', 'ring', () => openMenu('math'));
   K(850, 336, 40, 24, 'REF', 'ring', () => msg('REF : non simulé'));
   OL.Knob(box, { x: 830, y: 218, r: 22, cls: 'rk', turn: n => vpos(n), push: () => { st.ch[U.sel].pos = 0; }, title: 'POSITION' }); OL.Label(box, 800, 242, 'POSITION', 'rl', 60);
-  OL.Knob(box, { x: 850, y: 296, r: 0 + 26, cls: 'rk', turn: n => vdiv(n), push: () => { }, title: 'SCALE' }); OL.Label(box, 820, 324, 'SCALE', 'rl', 60);
+  OL.Knob(box, { x: 850, y: 296, r: 0 + 26, cls: 'rk', turn: n => vdiv(n), push: () => { const c = st.ch[U.sel]; c.fineMode = !c.fineMode; c.fk = c.fineMode ? c.fk : 0; msg(c.fineMode ? 'Volts/Div : réglage fin' : 'Volts/Div : réglage par paliers'); }, title: 'SCALE (appui : fin / paliers)' }); OL.Label(box, 820, 324, 'SCALE', 'rl', 60);
   /* HORIZONTAL */
   E('div', 'r-zone', box, { left: '908px', top: '172px', width: '92px', height: '210px' }); OL.Label(box, 910, 164, 'HORIZONTAL', 'rl', 90);
   OL.Knob(box, { x: 946, y: 206, r: 20, cls: 'rk', turn: n => { st.hdelay -= n * S.tdiv() / 25; st.hdelay = Math.max(-60 * S.tdiv(), Math.min(60 * S.tdiv(), st.hdelay)); }, push: () => { st.hdelay = 0; } }); OL.Label(box, 916, 228, 'POSITION', 'rl', 60);
@@ -1276,7 +1355,7 @@ OL.RigolUI = function (root, S) {
   E('div', 'r-zone', box, { left: '1006px', top: '172px', width: '80px', height: '210px' }); OL.Label(box, 1008, 164, 'TRIGGER', 'rl', 76);
   const bMode = K(1024, 184, 44, 22, 'MODE', 'light', () => { const t = st.trig; t.mode = t.mode === 'auto' ? 'normal' : t.mode === 'normal' ? 'single' : 'auto'; if (t.mode === 'single') S.arm(); });
   const leds = ['Auto', 'Normal', 'Single'].map((n, i) => { const l = E('div', 'r-led', box, { left: (1076) + 'px', top: (184 + i * 10) + 'px', width: '7px', height: '7px' }); return l; });
-  OL.Knob(box, { x: 1046, y: 250, r: 18, cls: 'rk', turn: n => level(n), push: () => level50(), title: 'LEVEL' }); OL.Label(box, 1016, 272, 'LEVEL', 'rl', 60);
+  OL.Knob(box, { x: 1046, y: 250, r: 18, cls: 'rk', turn: n => level(n), push: () => level0(), title: 'LEVEL (appui : niveau à 0 V)' }); OL.Label(box, 1016, 272, 'LEVEL', 'rl', 60);
   K(1024, 296, 44, 24, 'MENU', 'light', () => openMenu('trig'));
   K(1024, 336, 44, 24, 'FORCE', 'light', () => S.force());
   /* BNC et accessoires */
@@ -1290,14 +1369,17 @@ OL.RigolUI = function (root, S) {
   E('div', 'rl', box, { left: '40px', top: '420px', width: '260px', textAlign: 'left' }, '');
   E('div', '', box, { left: '34px', top: '454px', width: '40px', height: '34px', background: 'linear-gradient(#e7e8ea,#bfc1c5)', border: '2px solid #777', borderRadius: '4px' });
   E('div', '', box, { left: '86px', top: '460px', width: '24px', height: '14px', background: '#222', border: '2px solid #888', borderRadius: '2px' });
-  E('div', '', box, { left: '130px', top: '460px', width: '180px', height: '12px', background: '#222', border: '2px solid #888', borderRadius: '2px' });
   E('div', '', box, { left: '90px', top: '510px', width: '110px', height: '24px', background: '#3a3b3d', borderRadius: '0 0 8px 8px' });
   E('div', '', box, { left: '840px', top: '510px', width: '110px', height: '24px', background: '#3a3b3d', borderRadius: '0 0 8px 8px' });
 
   /* ===== logique ===== */
   function msg(t) { U.toast = t; U.toastT = performance.now(); } U.msg = msg;
   function copyShot() { try { const a = document.createElement('a'); a.href = cv.toDataURL('image/png'); a.download = 'oscillolab-rigol.png'; a.click(); msg('Capture enregistrée'); } catch (e) { msg('Capture impossible'); } }
-  function doAuto() { const ok = S.autoset(); msg(ok ? 'Autoset' : 'Aucun signal'); if (ok) { U.menu = null; U.sel = st.sel; } }
+  function doAuto() {
+    U.autoSnap = JSON.stringify(st); const ok = S.autoset(); msg(ok ? 'Auto réglage' : 'Aucun signal (fréquence ≥ 41 Hz et amplitude ≥ 20 mV requises)');
+    if (ok) { U.menu = 'auto'; U.page = 0; U.sel = st.sel; U.drop = null; U.sel2 = -1; }
+  }
+  const autoShape = (periods, edge) => { const per = (S.lastAuto || {}).per; if (!per) return; st.tdivIdx = OL.nearest(P.tdivs, edge ? per / 100 : periods * per / P.hdiv); if (edge) st.trig.slope = edge; st.hdelay = 0; S.resetAvg(); };
   function chKey(i) {
     const c = st.ch[i];
     if (!c.on) { c.on = true; U.sel = i; st.sel = i; U.menu = 'ch'; U.drop = null; return; }
@@ -1306,13 +1388,14 @@ OL.RigolUI = function (root, S) {
   }
   function openMenu(id) { if (U.menu === id && !U.drop) { U.menu = null; return; } U.menu = id; U.drop = null; U.page = 0; }
   function vpos(n) { if (U.menu === 'cursor' && U.cur.mode !== 'off' && U.cur.fromKnob) return; const c = st.ch[U.sel]; c.pos = Math.max(-8, Math.min(8, c.pos + n * 0.04)); }
-  function vdiv(n) { const c = st.ch[U.sel], old = Math.abs(S.vdivLabel(U.sel)); c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx + n)); const nw = Math.abs(S.vdivLabel(U.sel)); c.pos = c.pos * old / nw; S.resetAvg(); }
-  function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx + n)); S.resetAvg(); }
+  function vdiv(n) { const c = st.ch[U.sel], old = Math.abs(S.vdivLabel(U.sel)); if (c.fineMode) S.fineStep(U.sel, -n); else { c.fk = 0; c.vIdx = Math.max(0, Math.min(P.vdivs.length - 1, c.vIdx - n)); } const nw = Math.abs(S.vdivLabel(U.sel)); c.pos = c.pos * old / nw; S.resetAvg(); }
+  function tdiv(n) { st.tdivIdx = Math.max(0, Math.min(P.tdivs.length - 1, st.tdivIdx - n)); S.resetAvg(); }
   function level(n) { const lab = Math.abs(S.vdivLabel(st.trig.src)); st.trig.level += n * lab / 25; }
+  function level0() { st.trig.level = 0; }
   function level50() { const t = st.trig, v = S.volts(t.src); if (!v) return; let mn = Infinity, mx = -Infinity; for (const x of v) { if (x < mn) mn = x; if (x > mx) mx = x; } t.level = (mn + mx) / 2; }
   function mfKnob(n) {
     if (U.drop) { U.drop.idx = Math.max(0, Math.min(U.drop.opts.length - 1, U.drop.idx + n)); return; }
-    const it = U.activeItem(); if (it && it.knob) it.knob(n);
+    const it = U.menu ? U.activeItem() : null; if (it && it.knob) it.knob(n); else if (!U.menu || !it) U.inten = Math.max(1, Math.min(100, U.inten + n * 2));
   }
   function mfPush() { if (U.drop) { U.drop.opts[U.drop.idx].f(); U.drop = null; return; } const it = U.activeItem(); if (it && it.push) it.push(); }
   U.activeItem = () => { const m = menus[U.menu]; if (!m) return null; return m()[U.sel2] || null; };
@@ -1325,44 +1408,54 @@ OL.RigolUI = function (root, S) {
     { label: 'BW Limit', val: () => c.bw20 ? '20MHz' : 'OFF', opts: [opt('OFF', () => { c.bw20 = false; }), opt('20MHz', () => { c.bw20 = true; })] },
     { label: 'Probe', val: () => c.probe + 'X', opts: P.probes.map(k => opt(k + 'X', () => { c.probe = k; S.resetAvg(); })) },
     { label: 'Invert', val: () => c.inv ? 'ON' : 'OFF', opts: [opt('OFF', () => { c.inv = false; }), opt('ON', () => { c.inv = true; })] },
-    { label: 'Scale', val: () => 'Coarse', opts: [opt('Coarse', () => { }), opt('Fine', () => msg('Réglage fin : non simulé'))] },
-    { label: 'Unit', val: () => 'V', opts: [opt('V', () => { })] }]; };
+    { label: 'Volts/Div', val: () => c.fineMode ? 'Fine' : 'Coarse', opts: [opt('Coarse', () => { c.fineMode = false; c.fk = 0; }), opt('Fine', () => { c.fineMode = true; })] }]; };
   menus.trig = () => { const t = st.trig; return [
-    { label: 'Type', val: () => 'Edge', opts: [opt('Edge', () => { })] },
-    { label: 'Source', val: () => P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })) },
+    { label: 'Type', val: () => 'Edge', opts: ['Edge', 'Pulse', 'Slope', 'Video', 'Pattern', 'Duration', 'TimeOut', 'Runt', 'Window', 'Delay', 'Setup/Hold', 'Nth Edge', 'RS232', 'I2C', 'SPI'].map(n => opt(n, () => { if (n !== 'Edge') msg('Non simulé : seul le déclenchement sur front (Edge) est disponible'); })) },
+    { label: 'Source', val: () => t.src === 'line' ? 'AC Line' : P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })).concat([opt('AC Line', () => { t.src = 'line'; })]) },
     { label: 'Slope', val: () => t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', opts: [opt('↗ Rising', () => { t.slope = 'rise'; }), opt('↘ Falling', () => { t.slope = 'fall'; }), opt('↗↘ Both', () => { t.slope = 'both'; })] },
     { label: 'Sweep', val: () => ({ auto: 'Auto', normal: 'Normal', single: 'Single' })[t.mode], opts: [opt('Auto', () => { t.mode = 'auto'; }), opt('Normal', () => { t.mode = 'normal'; }), opt('Single', () => { t.mode = 'single'; S.arm(); })] },
     { label: 'Coupling', val: () => ({ dc: 'DC', ac: 'AC', hf: 'HF Reject', lf: 'LF Reject' })[t.coup], opts: [opt('DC', () => { t.coup = 'dc'; }), opt('AC', () => { t.coup = 'ac'; }), opt('LF Reject', () => { t.coup = 'lf'; }), opt('HF Reject', () => { t.coup = 'hf'; })] },
     { label: 'Holdoff', val: () => OL.fmt(t.holdoff, 's'), knob: n => { t.holdoff = Math.max(100e-9, Math.min(10, t.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); }, push: () => { t.holdoff = 100e-9; } }]; };
+  const PAIRS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
   menus.horiz = () => [
-    { label: 'Delayed', val: () => 'OFF', opts: [opt('OFF', () => { })] },
-    { label: 'Time Base', val: () => st.xy ? 'XY' : 'YT', opts: [opt('YT', () => { st.xy = false; }), opt('XY', () => { st.xy = true; })] },
-    { label: 'Hor. Ref', val: () => 'Center', opts: [opt('Center', () => { })] },
-    { label: 'Delay offset', val: () => OL.fmt(st.hdelay, 's'), knob: n => { st.hdelay -= n * S.tdiv() / 25; }, push: () => { st.hdelay = 0; } }];
-  const HL = ['period', 'freq', 'rise', 'fall', 'pwidth', 'nwidth', 'pduty', 'nduty'], VL = ['max', 'min', 'pp', 'top', 'base', 'amp', 'avg', 'rms', 'cycavg', 'cycrms', 'over', 'pre'];
-  const addMeas = (key, ch) => { const id = ch + key; const i = U.meas.findIndex(m => m.id === id); if (i >= 0) U.meas.splice(i, 1); else { if (U.meas.length >= 5) U.meas.shift(); U.meas.push({ id, key, ch }); } };
-  const addDelay = k => { const id = 'D' + k; const i = U.meas.findIndex(m => m.id === id); if (i >= 0) U.meas.splice(i, 1); else { if (U.meas.length >= 5) U.meas.shift(); U.meas.push({ id, key: k, ch: 0, delay: true }); } };
+    { label: 'Time Base', val: () => st.xy ? 'XY' : st.roll ? 'Roll' : 'YT', opts: [opt('YT', () => { st.xy = false; st.roll = false; }), opt('XY', () => { st.xy = true; st.roll = false; }), opt('Roll', () => { st.xy = false; st.roll = true; if (S.tdiv() < 0.2) st.tdivIdx = OL.nearest(P.tdivs, 0.2); })] },
+    { label: 'X-Y', val: () => 'CH' + (st.xyPair[0] + 1) + '-CH' + (st.xyPair[1] + 1), opts: PAIRS.map(p => opt('CH' + (p[0] + 1) + '-CH' + (p[1] + 1), () => { st.xyPair = p; })) }];
+  const HL = OL.RIGOL_H.concat(['rdelay', 'fdelay', 'rphase', 'fphase']), VL = OL.RIGOL_V;
+  const mnm = k => OL.MEAS2[k] || OL.MEAS[k].r;
+  const addM = k => { if (OL.MEAS2[k]) OL.toggleMeas(U.meas, { id: k + (U.mSrc || 0) + (U.mSrcB || 1), key: k, a: U.mSrc || 0, b: U.mSrcB === undefined ? 1 : U.mSrcB }, 5); else OL.toggleMeas(U.meas, { id: (U.mSrc || 0) + k, key: k, a: U.mSrc || 0 }, 5); };
+  menus.auto = () => [
+    { label: 'Multi-period', val: () => '', act: () => { S.autoset(); } },
+    { label: 'Single-period', val: () => '', act: () => autoShape(1.6) },
+    { label: 'Rising edge', val: () => '', act: () => autoShape(0, 'rise') },
+    { label: 'Falling edge', val: () => '', act: () => autoShape(0, 'fall') },
+    { label: 'Back', val: () => '', act: () => { U.menu = null; } },
+    { label: 'Undo', val: () => '', act: () => { try { const o = JSON.parse(U.autoSnap); Object.keys(st).forEach(k => delete st[k]); Object.assign(st, o); } catch (e) { } U.menu = null; msg('Auto réglage annulé'); } }];
   menus.measure = () => [
     { label: 'Source', val: () => P.chNames[U.mSrc || 0], opts: P.chNames.map((n, k) => opt(n, () => { U.mSrc = k; })) },
-    { label: 'Horizontal', val: () => '▼', opts: HL.map(k => opt(OL.MEAS[k].r, () => addMeas(k, U.mSrc || 0))) },
-    { label: 'Vertical', val: () => '▼', opts: VL.map(k => opt(OL.MEAS[k].r, () => addMeas(k, U.mSrc || 0))) },
-    { label: 'Delay', val: () => '▼', opts: [opt('Delay A↑B↑', () => addDelay('delay')), opt('Phase A↑B↑', () => addDelay('phase'))] },
+    { label: 'Source B', val: () => P.chNames[U.mSrcB === undefined ? 1 : U.mSrcB], opts: P.chNames.map((n, k) => opt(n, () => { U.mSrcB = k; })) },
+    { label: 'Horizontal', val: () => '▼', opts: HL.map(k => opt(mnm(k), () => addM(k))) },
+    { label: 'Vertical', val: () => '▼', opts: VL.map(k => opt(mnm(k), () => addM(k))) },
+    { label: 'All Measure', val: () => U.allMeas ? 'ON' : 'OFF', opts: [opt('OFF', () => { U.allMeas = false; }), opt('ON', () => { U.allMeas = true; })] },
     { label: 'Clear', val: () => '', opts: [opt('Tout effacer', () => { U.meas.length = 0; })] }];
   menus.acquire = () => [
-    { label: 'Acquisition', val: () => ({ sample: 'Normal', peak: 'Peak Detect', avg: 'Averages' })[st.acq], opts: [opt('Normal', () => { st.acq = 'sample'; }), opt('Averages', () => { st.acq = 'avg'; S.resetAvg(); }), opt('Peak Detect', () => { st.acq = 'peak'; })] },
-    { label: 'Averages', val: () => String(st.avgN), opts: [2, 4, 8, 16, 32, 64, 128, 256].map(n => opt(String(n), () => { st.avgN = n; S.resetAvg(); })) },
-    { label: 'Mem Depth', val: () => 'Auto', opts: [opt('Auto', () => { })] },
-    { label: 'Anti-Aliasing', val: () => 'OFF', opts: [opt('OFF', () => { })] }];
+    { label: 'Mode', val: () => ({ sample: 'Normal', peak: 'Peak Detect', avg: 'Average', hires: 'High Res' })[st.acq], opts: [opt('Normal', () => { st.acq = 'sample'; }), opt('Average', () => { st.acq = 'avg'; S.resetAvg(); }), opt('Peak Detect', () => { st.acq = 'peak'; }), opt('High Res', () => { st.acq = 'hires'; })] },
+    { label: 'Averages', val: () => String(st.avgN), opts: [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024].map(n => opt(String(n), () => { st.avgN = n; S.resetAvg(); })) },
+    { label: 'Mem Depth', val: () => !st.mem || st.mem === 'auto' ? 'Auto' : OL.fmtPts(st.mem), opts: () => [opt('Auto', () => { st.mem = 'auto'; })].concat(P.memOpts(Math.max(1, S.nOn())).map(m => opt(OL.fmtPts(m), () => { st.mem = m; }))) }];
+  OL.fmtPts = m => m >= 1e6 ? +(m / 1e6).toFixed(1) + 'M' : +(m / 1e3).toFixed(0) + 'k';
   menus.display = () => [
     { label: 'Type', val: () => st.dots ? 'Dots' : 'Vectors', opts: [opt('Vectors', () => { st.dots = false; }), opt('Dots', () => { st.dots = true; })] },
-    { label: 'Persist', val: () => ({ 0: 'Min', 1: '1 s', 2: '2 s', 5: '5 s', 99: 'Infinite' })[st.persist], opts: [[0, 'Min'], [1, '1 s'], [2, '2 s'], [5, '5 s'], [99, 'Infinite']].map(([v, t]) => opt(t, () => { st.persist = v; U.ghost = null; })) },
-    { label: 'Grid', val: () => U.gridMode === 'cross' ? 'Axes' : 'Full', opts: [opt('Full', () => { U.gridMode = 'full'; }), opt('Axes', () => { U.gridMode = 'cross'; })] }];
+    { label: 'Persist', val: () => U.persName(), opts: [[0, 'Min'], [0.1, '100 ms'], [0.2, '200 ms'], [0.5, '500 ms'], [1, '1 s'], [2, '2 s'], [5, '5 s'], [10, '10 s'], [99, 'Infinite']].map(([v, t]) => opt(t, () => { st.persist = v; U.ghost = null; })) },
+    { label: 'Intensity', val: () => (U.inten) + '%', knob: n => { U.inten = Math.max(1, Math.min(100, U.inten + n * 2)); }, push: () => { U.inten = 50; } },
+    { label: 'Grid', val: () => ({ full: 'Full', half: 'Half', none: 'None' })[U.gridMode || 'full'], opts: [opt('Full', () => { U.gridMode = 'full'; }), opt('Half', () => { U.gridMode = 'half'; }), opt('None', () => { U.gridMode = 'none'; })] },
+    { label: 'Grid Bright.', val: () => (U.gridB) + '%', knob: n => { U.gridB = Math.max(0, Math.min(100, U.gridB + n * 2)); }, push: () => { U.gridB = 50; } }];
+  U.inten = 50; U.gridB = 50; U.persName = () => ({ 0: 'Min', 0.1: '100 ms', 0.2: '200 ms', 0.5: '500 ms', 1: '1 s', 2: '2 s', 5: '5 s', 10: '10 s', 99: 'Infinite' })[st.persist] || 'Min';
   menus.cursor = () => [
-    { label: 'Mode', val: () => ({ off: 'OFF', manual: 'Manual' })[U.cur.mode], opts: [opt('OFF', () => { U.cur.mode = 'off'; }), opt('Manual', () => { U.cur.mode = 'manual'; })] },
+    { label: 'Mode', val: () => ({ off: 'OFF', manual: 'Manual', track: 'Track' })[U.cur.mode], opts: [opt('OFF', () => { U.cur.mode = 'off'; }), opt('Manual', () => { U.cur.mode = 'manual'; }), opt('Track', () => { U.cur.mode = 'track'; })] },
     { label: 'Type', val: () => U.cur.type === 'x' ? 'X' : 'Y', opts: [opt('X', () => { U.cur.type = 'x'; }), opt('Y', () => { U.cur.type = 'y'; })] },
     { label: 'Source', val: () => P.chNames[U.cur.src], opts: P.chNames.map((n, k) => opt(n, () => { U.cur.src = k; })) },
-    { label: 'CurA', val: () => U.cur.type === 'x' ? OL.fmt(U.cur.a * S.tdiv(), 's') : '', knob: n => { U.cur.a = Math.max(-5.9, Math.min(5.9, U.cur.a + n * 0.05)); } },
-    { label: 'CurB', val: () => U.cur.type === 'x' ? OL.fmt(U.cur.b * S.tdiv(), 's') : '', knob: n => { U.cur.b = Math.max(-5.9, Math.min(5.9, U.cur.b + n * 0.05)); } }];
+    { label: 'CurA', val: () => OL.fmt(U.cur.a * S.tdiv(), 's'), knob: n => { U.cur.a = Math.max(-5.9, Math.min(5.9, U.cur.a + n * 0.05)); } },
+    { label: 'CurB', val: () => OL.fmt(U.cur.b * S.tdiv(), 's'), knob: n => { U.cur.b = Math.max(-5.9, Math.min(5.9, U.cur.b + n * 0.05)); } },
+    { label: 'CurAB', val: () => 'A+B', knob: n => { U.cur.a = Math.max(-5.9, Math.min(5.9, U.cur.a + n * 0.05)); U.cur.b = Math.max(-5.9, Math.min(5.9, U.cur.b + n * 0.05)); } }];
   const mem = {};
   menus.storage = () => [
     { label: 'Storage', val: () => U.sType || 'Setup', opts: [opt('Setup', () => { U.sType = 'Setup'; }), opt('Picture', () => { U.sType = 'Picture'; })] },
@@ -1373,19 +1466,22 @@ OL.RigolUI = function (root, S) {
     { label: 'System', val: () => '▼', opts: [opt('Self-Cal', () => { U.selfcal = performance.now(); })] },
     { label: 'Language', val: () => 'Français', opts: [opt('Français', () => { })] }];
   menus.math = () => [
-    { label: 'Operate', val: () => ({ 'a+b': 'A+B', 'a-b': 'A-B', 'a*b': 'A×B' })[st.math.op] + (st.math.on ? '' : ' (OFF)'), opts: [opt('A+B', () => { st.math.op = 'a+b'; st.math.on = true; }), opt('A-B', () => { st.math.op = 'a-b'; st.math.on = true; }), opt('A×B', () => { st.math.op = 'a*b'; st.math.on = true; }), opt('OFF', () => { st.math.on = false; })] }];
+    { label: 'Operate', val: () => ({ 'a+b': 'A+B', 'a-b': 'A-B', 'a*b': 'A×B', 'a/b': 'A/B' })[st.math.op] + (st.math.on ? '' : ' (OFF)'), opts: [opt('A+B', () => { st.math.op = 'a+b'; st.math.on = true; }), opt('A-B', () => { st.math.op = 'a-b'; st.math.on = true; }), opt('A×B', () => { st.math.op = 'a*b'; st.math.on = true; }), opt('A/B', () => { st.math.op = 'a/b'; st.math.on = true; }), opt('OFF', () => { st.math.on = false; })] }];
+  const norm = s => String(s).toLowerCase().replace(/[^a-z0-9%]/g, '');
   function pressSoft(i) {
     const m = menus[U.menu]; if (!m) return; const items = m(); const idx = U.page * 6 + i; const it = items[idx]; if (!it) return;
     U.sel2 = idx;
-    if (it.opts) {
-      if (it.opts.length <= 4) { const cur = it.val(); let k = it.opts.findIndex(o => o.t === cur || o.t.replace(/^[↗↘↗↘ ]+/, '').split(' ')[0] === cur.toUpperCase()); if (U.lastKey === idx + U.menu) { k = ((it.opts.findIndex(o => String(o.t).toLowerCase().indexOf(String(cur).toLowerCase()) === 0) + 1) % it.opts.length); it.opts[k].f(); } else { U.lastKey = idx + U.menu; } }
-      else if (U.drop && U.drop.item === it) { U.drop.opts[U.drop.idx].f(); U.drop = null; }
-      else { U.drop = { item: it, idx: 0, opts: it.opts }; }
-      U.lastKey = idx + U.menu;
-    } else { U.lastKey = idx + U.menu; }
+    if (it.act) { it.act(); return; }
+    if (!it.opts) return;
+    const opts = typeof it.opts === 'function' ? it.opts() : it.opts;
+    if (U.drop && U.drop.item === it) { U.drop.opts[U.drop.idx].f(); U.drop = null; return; }   /* 2e appui : valide la liste */
+    const v = norm(typeof it.val === 'function' ? it.val() : ''); let cur = opts.findIndex(o => { const n = norm(o.t); return n === v || (v && (n.indexOf(v) === 0 || v.indexOf(n) === 0)); }); if (cur < 0) cur = 0;
+    if (opts.length <= 4) { opts[(cur + 1) % opts.length].f(); }        /* chaque appui passe à l'option suivante */
+    else U.drop = { item: it, idx: cur, opts };                       /* liste : bouton multifonction pour choisir, appui pour valider */
   }
+  function addM2(k) { OL.toggleMeas(U.meas, { id: st.sel + k, key: k, a: st.sel }, 5); }
   function pressQM(i) {
-    if (U.qm === null) return; const key = (U.qm === 0 ? HL : VL)[i]; if (key) addMeas(key, st.sel);
+    if (U.qm === null) return; const set = U.qm === 0 ? OL.RIGOL_H : OL.RIGOL_V, key = set[(U.qmPage || 0) * 6 + i]; if (key) addM2(key);
   }
   U.menus = menus; U.pressSoft = pressSoft; U.openMenu = openMenu; U.doAutoset = doAuto; U.chKey = chKey;
 
@@ -1407,25 +1503,28 @@ OL.RigolUI = function (root, S) {
     c.strokeStyle = '#aaa'; c.strokeRect(304.5, 8.5, 190, 16); c.fillStyle = '#333'; c.fillRect(306, 10, 187, 13); c.fillStyle = '#f90'; c.fillRect(398 - st.hdelay / S.window() * 20, 9, 7, 8);
     OL.rrect(c, 520, 6, 140, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'D', 528, 18, { size: 13, bold: true, color: '#f90' }); OL.text(c, OL.fmt(-st.hdelay, 's', 4).replace(',', '.').replace('µ', 'u'), 652, 18, { size: 14, align: 'right' });
     const t = st.trig; OL.rrect(c, 676, 6, 120, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'T', 684, 18, { size: 13, bold: true }); OL.text(c, t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', 702, 18, { size: 13, color: '#fc0' });
-    c.fillStyle = cols[t.src]; c.fillRect(716, 12, 11, 12); OL.text(c, String(t.src + 1), 721, 18, { size: 10, color: '#000', align: 'center', bold: true });
-    OL.text(c, OL.fmt(t.level, 'V', 3).replace(',', '.').replace(' ', ''), 790, 18, { size: 13, align: 'right', color: '#fc0' });
+    if (t.src === 'line') OL.text(c, 'AC', 722, 18, { size: 12, color: '#fc0', bold: true }); else { c.fillStyle = cols[t.src]; c.fillRect(716, 12, 11, 12); OL.text(c, String(t.src + 1), 721, 18, { size: 10, color: '#000', align: 'center', bold: true }); }
+    if (t.src !== 'line') OL.text(c, OL.fmt(t.level, 'V', 3).replace(',', '.').replace(' ', ''), 790, 18, { size: 13, align: 'right', color: '#fc0' });
     /* graticule */
-    OL.drawGrid(c, GR, { full: U.gridMode !== 'cross', line: '#454545', axis: '#808080', frame: '#9a9a9a' });
+    OL.drawGrid2(c, GR, U.gridMode || 'full', U.gridB, { axis: '#808080' });
     const dh = GR.h / 8, cy = GR.y + GR.h / 2;
-    if (rec) {
-      if (st.xy) OL.drawXY(c, GR, sc.divs(0), sc.divs(1), cols[0]);
-      else for (let i = 0; i < P.nch; i++) { if (!st.ch[i].on) continue; const pk = st.acq === 'peak' ? sc.peakDivs(i) : null; if (pk) OL.drawPeak(c, GR, pk, cols[i]); else OL.drawTrace(c, GR, sc.divs(i), cols[i], { dots: st.dots, step: 6 }); }
+    if (rec) OL.persistDraw(U, S, c, 800, 480, st.persist, cx => {
+      cx.save(); cx.globalAlpha = 0.35 + 0.65 * U.inten / 100;
+      if (st.xy) OL.drawXY(cx, GR, sc.divs(st.xyPair[0]), sc.divs(st.xyPair[1]), cols[st.xyPair[0]]);
+      else for (let i = 0; i < P.nch; i++) { if (!st.ch[i].on) continue; const pk = st.acq === 'peak' ? sc.peakDivs(i) : null; if (pk) OL.drawPeak(cx, GR, pk, cols[i]); else OL.drawTrace(cx, GR, sc.divs(i), cols[i], { dots: st.dots, step: 6 }); }
       if (st.math.on && st.ch[0].on && st.ch[1].on && !st.xy) {
         const v0 = sc.volts(0), v1 = sc.volts(1), m = new Float64Array(v0.length), lab = Math.abs(sc.vdivLabel(U.sel));
-        for (let j = 0; j < m.length; j++) { const a = v0[j], b = v1[j]; const r = st.math.op === 'a+b' ? a + b : st.math.op === 'a-b' ? a - b : a * b; m[j] = Math.max(-4.2, Math.min(4.2, r / lab)); }
-        OL.drawTrace(c, GR, m, '#ff8c1a', {});
+        for (let j = 0; j < m.length; j++) { const a = v0[j], b = v1[j]; const r = st.math.op === 'a+b' ? a + b : st.math.op === 'a-b' ? a - b : st.math.op === 'a*b' ? a * b : (b ? a / b : 0); m[j] = Math.max(-4.2, Math.min(4.2, r / lab)); }
+        OL.drawTrace(cx, GR, m, '#ff8c1a', {});
       }
-    }
+      cx.restore();
+    });
     /* repères de zéro (gauche) et de niveau (droite) */
     for (let i = 0; i < P.nch; i++) if (st.ch[i].on) { const y = cy - st.ch[i].pos * dh; c.fillStyle = cols[i]; c.beginPath(); c.moveTo(GR.x - 18, y - 7); c.lineTo(GR.x - 6, y - 7); c.lineTo(GR.x, y); c.lineTo(GR.x - 6, y + 7); c.lineTo(GR.x - 18, y + 7); c.closePath(); c.fill(); OL.text(c, String(i + 1), GR.x - 11, y + 1, { size: 11, color: '#000', align: 'center', bold: true }); }
-    { const lab = Math.abs(sc.vdivLabel(t.src)), y = Math.max(GR.y + 6, Math.min(GR.y + GR.h - 6, cy - (t.level / lab + st.ch[t.src].pos) * dh)); c.fillStyle = '#ff9a1a'; c.beginPath(); c.moveTo(GR.x + GR.w, y); c.lineTo(GR.x + GR.w + 7, y - 7); c.lineTo(GR.x + GR.w + 20, y - 7); c.lineTo(GR.x + GR.w + 20, y + 7); c.lineTo(GR.x + GR.w + 7, y + 7); c.closePath(); c.fill(); OL.text(c, 'T', GR.x + GR.w + 13, y + 1, { size: 10, color: '#000', align: 'center', bold: true }); }
+    if (t.src !== 'line') { const lab = Math.abs(sc.vdivLabel(t.src)), y = Math.max(GR.y + 6, Math.min(GR.y + GR.h - 6, cy - (t.level / lab + st.ch[t.src].pos) * dh)); c.fillStyle = '#ff9a1a'; c.beginPath(); c.moveTo(GR.x + GR.w, y); c.lineTo(GR.x + GR.w + 7, y - 7); c.lineTo(GR.x + GR.w + 20, y - 7); c.lineTo(GR.x + GR.w + 20, y + 7); c.lineTo(GR.x + GR.w + 7, y + 7); c.closePath(); c.fill(); OL.text(c, 'T', GR.x + GR.w + 13, y + 1, { size: 10, color: '#000', align: 'center', bold: true }); }
     const tx = GR.x + GR.w / 2 - st.hdelay / S.window() * GR.w; if (tx > GR.x && tx < GR.x + GR.w) { c.fillStyle = '#f90'; c.beginPath(); c.moveTo(tx - 6, GR.y - 8); c.lineTo(tx + 6, GR.y - 8); c.lineTo(tx, GR.y); c.closePath(); c.fill(); }
     if (U.cur.mode !== 'off') drawCursors(c);
+    drawAll(c);
     drawMeas(c);
     /* barre des voies */
     for (let i = 0; i < 4; i++) {
@@ -1440,42 +1539,44 @@ OL.RigolUI = function (root, S) {
     if (U.help) { OL.rrect(c, 110, 60, 580, 330, 8, 'rgba(10,20,40,.96)', '#9ab', 1.5); ['Aide : appuyez sur une touche (Measure, Cursor…).', 'Touches grises à droite de l\'écran : menu affiché.', 'MENU (à gauche) : mesures rapides ; touches bleues.', 'Un seul POSITION et un seul SCALE : voie sélectionnée.', 'Appui sur POSITION : retour à zéro.', 'Appui sur LEVEL : niveau de déclenchement à 50 %.', 'AUTO : réglage automatique.'].forEach((l, k) => OL.text(c, l, 130, 96 + k * 38, { size: 17 })); }
   };
   function drawQM(c) {
-    if (U.qm === null) return; const keys = U.qm === 0 ? HL : VL;
+    if (U.qm === null) return; const keys = (U.qm === 0 ? OL.RIGOL_H : OL.RIGOL_V).slice((U.qmPage || 0) * 6, (U.qmPage || 0) * 6 + 6);
     OL.text(c, U.qm === 0 ? 'Horizontal' : 'Vertical', 40, 62, { size: 12, align: 'center', color: '#fff' });
-    keys.slice(0, 6).forEach((k, i) => { const y = 76 + i * 56; OL.rrect(c, 8, y, 64, 50, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall'), 40, y + 36, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(24, y + 8, 32, 18); });
+    keys.forEach((k, i) => { const y = 76 + i * 56; OL.rrect(c, 8, y, 64, 50, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall').replace('Period Area', 'P.Area'), 40, y + 36, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(24, y + 8, 32, 18); });
   }
   function drawCursors(c) {
-    const cu = U.cur, dh = GR.h / 8, cy = GR.y + GR.h / 2, src = cu.src, lab = Math.abs(S.vdivLabel(src));
+    const cu = U.cur, dh = GR.h / 8, cy = GR.y + GR.h / 2, src = cu.src, lab = Math.abs(S.vdivLabel(src)), wd = GR.w / 12, pos = st.ch[src].pos;
     c.save(); c.setLineDash([6, 4]); c.strokeStyle = '#fff'; c.lineWidth = 1;
-    const wd = GR.w / 12;
-    if (cu.type === 'x') {
-      [cu.a, cu.b].forEach((d, k) => { const x = GR.x + GR.w / 2 + d * wd; c.beginPath(); c.moveTo(x, GR.y); c.lineTo(x, GR.y + GR.h); c.stroke(); OL.text(c, k ? 'B' : 'A', x + 2, GR.y + 10, { size: 12, color: '#fff' }); });
-      const t1 = cu.a * S.tdiv(), t2 = cu.b * S.tdiv(), dt = Math.abs(t2 - t1);
-      c.setLineDash([]); OL.rrect(c, GR.x + 6, GR.y + 6, 220, 70, 4, 'rgba(0,0,0,.8)', '#888', 1);
-      OL.text(c, 'AX: ' + OL.fmt(t1, 's', 4).replace(',', '.'), GR.x + 12, GR.y + 20, { size: 13 }); OL.text(c, 'BX: ' + OL.fmt(t2, 's', 4).replace(',', '.'), GR.x + 12, GR.y + 38, { size: 13 }); OL.text(c, 'ΔX: ' + OL.fmt(dt, 's', 4).replace(',', '.') + '   1/ΔX: ' + (dt ? OL.fmt(1 / dt, 'Hz', 4).replace(',', '.') : '****'), GR.x + 12, GR.y + 58, { size: 13 });
+    const box = (n, lines) => { c.setLineDash([]); OL.rrect(c, GR.x + 6, GR.y + 6, 232, 8 + n * 17, 4, 'rgba(0,0,0,.82)', '#888', 1); lines.forEach((l, k) => OL.text(c, l, GR.x + 12, GR.y + 19 + k * 17, { size: 12.5 })); };
+    const f = (v, u) => OL.fmt(v, u, 4).replace(',', '.');
+    if (cu.mode === 'track' || cu.type === 'x') {
+      const d = S.volts(src), N = d ? d.length : 0, val = x => { if (!N) return 0; const j = Math.max(0, Math.min(N - 1, Math.round((x + 6) / 12 * N))); return d[j]; };
+      const xs = [cu.a, cu.b], t = xs.map(x => x * S.tdiv() - st.hdelay * 0), v = xs.map(val);
+      xs.forEach((x, k) => { const px = GR.x + GR.w / 2 + x * wd; c.beginPath(); c.moveTo(px, GR.y); c.lineTo(px, GR.y + GR.h); c.stroke(); OL.text(c, k ? 'B' : 'A', px + 4, GR.y + 10, { size: 12 });
+        if (cu.mode === 'track') { c.setLineDash([]); c.fillStyle = '#fff'; c.beginPath(); c.arc(px, cy - (v[k] / lab + pos) * dh, 4, 0, 7); c.fill(); c.setLineDash([6, 4]); } });
+      const dt = Math.abs(t[1] - t[0]);
+      if (cu.mode === 'track') box(7, ['AX: ' + f(t[0], 's'), 'AY: ' + f(v[0], 'V'), 'BX: ' + f(t[1], 's'), 'BY: ' + f(v[1], 'V'), 'ΔX: ' + f(dt, 's') + '   ΔY: ' + f(v[1] - v[0], 'V'), '1/ΔX: ' + (dt ? f(1 / dt, 'Hz') : '****'), '']);
+      else box(4, ['AX: ' + f(t[0], 's'), 'BX: ' + f(t[1], 's'), 'ΔX: ' + f(dt, 's'), '1/ΔX: ' + (dt ? f(1 / dt, 'Hz') : '****')]);
     } else {
       [cu.a, cu.b].forEach((d, k) => { const y = cy - d * dh; c.beginPath(); c.moveTo(GR.x, y); c.lineTo(GR.x + GR.w, y); c.stroke(); OL.text(c, k ? 'B' : 'A', GR.x + 6, y - 7, { size: 12 }); });
-      const y1 = (cu.a - st.ch[src].pos) * lab, y2 = (cu.b - st.ch[src].pos) * lab;
-      c.setLineDash([]); OL.rrect(c, GR.x + 6, GR.y + 6, 180, 70, 4, 'rgba(0,0,0,.8)', '#888', 1);
-      OL.text(c, 'AY: ' + OL.fmt(y1, 'V', 3).replace(',', '.'), GR.x + 12, GR.y + 20, { size: 13 }); OL.text(c, 'BY: ' + OL.fmt(y2, 'V', 3).replace(',', '.'), GR.x + 12, GR.y + 38, { size: 13 }); OL.text(c, 'ΔY: ' + OL.fmt(Math.abs(y2 - y1), 'V', 3).replace(',', '.'), GR.x + 12, GR.y + 58, { size: 13 });
+      const y1 = (cu.a - pos) * lab, y2 = (cu.b - pos) * lab; box(3, ['AY: ' + f(y1, 'V'), 'BY: ' + f(y2, 'V'), 'ΔY: ' + f(Math.abs(y2 - y1), 'V')]);
     }
     c.restore();
   }
+  function drawAll(c) {
+    if (!U.allMeas) return; const s = U.mSrc || 0, v = S.volts(s); if (!v) return; const dt = S.window() / v.length, r = OL.measure(v, dt, v.length / 2 - st.hdelay / dt);
+    const keys = OL.RIGOL_H.concat(OL.RIGOL_V), colW = 196, rows = 14; OL.rrect(c, GR.x + 4, GR.y + 4, colW * 3 + 8, rows * 17 + 22, 4, 'rgba(0,0,0,.85)', cols[s], 1);
+    OL.text(c, 'All Measure — ' + P.chNames[s], GR.x + 10, GR.y + 14, { size: 12, color: cols[s], bold: true });
+    keys.forEach((k, i) => { const col = Math.floor(i / rows), row = i % rows, def = OL.MEAS[k]; OL.text(c, def.r + ':', GR.x + 10 + col * colW, GR.y + 32 + row * 17, { size: 11.5, color: '#9cf' }); OL.text(c, OL.fmtMeas(def, def.v(r)).replace('µ', 'u').replace(',', '.'), GR.x + 6 + (col + 1) * colW - 8, GR.y + 32 + row * 17, { size: 11.5, align: 'right' }); });
+  }
   function drawMeas(c) {
-    if (!U.meas.length) return; const cache = {};
-    U.meas.forEach((m, k) => {
-      let lab, val, col;
-      if (m.delay) { const a = S.volts(0), b = S.volts(1); lab = m.key === 'phase' ? 'RPhase 1→2' : 'RDelay 1→2'; col = '#fff'; val = '****';
-        if (a && b) { const d = OL.delayAB(a, b, S.window() / a.length), m0 = OL.measure(a, S.window() / a.length); if (d !== null) val = m.key === 'delay' ? OL.fmt(d, 's', 4) : (m0.period ? OL.fmtNum(d / m0.period * 360, 1) + '°' : '****'); } }
-      else { const r = cache[m.ch] || (cache[m.ch] = U.measureOf(m.ch)); const def = OL.MEAS[m.key]; lab = P.chNames[m.ch] + ' ' + def.r; col = cols[m.ch]; val = r ? OL.fmtMeas(def, def.v(r)) : '****'; }
+    U.meas.forEach((m, k) => { const l = OL.measValue(S, m, 'rigol'), col = cols[l.ci];
       const x = GR.x + 4 + k * 118, y = GR.y + GR.h - 40; OL.rrect(c, x, y, 114, 36, 3, 'rgba(0,0,0,.78)', col, 1);
-      OL.text(c, lab, x + 6, y + 11, { size: 11, color: col }); OL.text(c, val.replace(',', '.').replace('µ', 'u'), x + 108, y + 27, { size: 15, align: 'right', color: '#fff' });
-    });
+      OL.text(c, l.label, x + 6, y + 11, { size: 11, color: col }); OL.text(c, l.val.replace(',', '.').replace('µ', 'u'), x + 108, y + 27, { size: 15, align: 'right', color: '#fff' }); });
   }
   function drawMenu(c) {
     if (!U.menu) return; const m = menus[U.menu]; if (!m) return; const items = m(), x0 = 702, w = 96;
     OL.rrect(c, x0 - 2, 38, w + 4, 402, 8, 'rgba(14,16,20,.97)', '#556', 1);
-    OL.text(c, U.menu === 'ch' ? 'CH' + (U.sel + 1) : ({ trig: 'Trigger', horiz: 'Horizontal', measure: 'Measure', acquire: 'Acquire', display: 'Display', cursor: 'Cursor', storage: 'Storage', utility: 'Utility', math: 'Math' })[U.menu], x0 + w / 2, 52, { size: 14, align: 'center', color: '#8cf', bold: true });
+    OL.text(c, U.menu === 'ch' ? 'CH' + (U.sel + 1) : ({ auto: 'Auto Setting', trig: 'Trigger', horiz: 'Horizontal', measure: 'Measure', acquire: 'Acquire', display: 'Display', cursor: 'Cursor', storage: 'Storage', utility: 'Utility', math: 'Math' })[U.menu], x0 + w / 2, 52, { size: 14, align: 'center', color: '#8cf', bold: true });
     for (let i = 0; i < 6; i++) {
       const idx = U.page * 6 + i, it = items[idx]; if (!it) continue; const y = 64 + i * 62, sel = U.sel2 === idx;
       const g = c.createLinearGradient(0, y, 0, y + 56); g.addColorStop(0, sel ? '#33557a' : '#2a2d33'); g.addColorStop(1, sel ? '#1a3352' : '#17191d');
@@ -1486,6 +1587,12 @@ OL.RigolUI = function (root, S) {
     if (U.drop) { const d = U.drop, n = d.opts.length, show = Math.min(7, n), top = Math.max(0, Math.min(n - show, d.idx - 3)); OL.rrect(c, 580, 80, 118, show * 28 + 10, 5, '#10141a', '#7cf', 1);
       for (let k = 0; k < show; k++) { const o = d.opts[top + k], y = 86 + k * 28; if (top + k === d.idx) { c.fillStyle = '#2f6cb5'; c.fillRect(584, y, 110, 26); } OL.text(c, o.t, 639, y + 13, { size: 14, align: 'center' }); } }
   }
+  U.ctl = {}; const KM = { CLEAR: 'clear', AUTO: 'auto', 'RUN/STOP': 'run', SINGLE: 'single', Help: 'help', Measure: 'measure', Acquire: 'acquire', Storage: 'storage', Cursor: 'cursor', Display: 'display', Utility: 'utility', CH1: 'ch1', CH2: 'ch2', CH3: 'ch3', CH4: 'ch4', MATH: 'math', REF: 'ref', MODE: 'mode', FORCE: 'force' };
+  const menus3 = []; box.querySelectorAll('button.key').forEach(b => { const tx = b.textContent.trim(); if (KM[tx]) U.ctl[KM[tx]] = b; if (tx === 'MENU') menus3.push(b); });
+  U.ctl.qm = menus3[0]; U.ctl.horizmenu = menus3[1]; U.ctl.trigmenu = menus3[2]; rs.forEach((b, i) => { U.ctl['soft' + (i + 1)] = b; });
+  ['mf', 'vpos', 'vscale', 'hpos', 'hscale', 'level'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.knob')[i]; });
+  ['bnc1', 'bnc2', 'bnc3', 'bnc4'].forEach((id, i) => { U.ctl[id] = box.querySelectorAll('.bnc')[i]; }); U.ctl.comp = box.querySelector('.comp-term');
+  U.flash = ids => { [].concat(ids).forEach(id => { const e = U.ctl[id]; if (!e) return; e.classList.remove('flash'); void e.offsetWidth; e.classList.add('flash'); setTimeout(() => e.classList.remove('flash'), 3600); }); };
   U.tickFrame = function (dt) {
     bRun.classList.toggle('runlit', st.run); bRun.classList.toggle('stoplit', !st.run);
     chk.forEach((k, i) => { k.classList.toggle('lit', st.ch[i].on); });
@@ -1620,7 +1727,19 @@ OL.TPUI.prototype.list = function () {
   const c = E('div', 'card', r); E('h3', '', c, null, 'Travaux pratiques'); const L = E('div', 'tplist', c);
   OL.TPS.forEach(tp => { const b = E('button', 'btn' + (T.done[tp.id] ? ' done' : ''), L, null, '<b>' + tp.n + '.</b> ' + tp.title + ' <span class="hint">— ' + tp.level + '</span>'); b.addEventListener('click', () => T.open(tp)); });
   E('div', 'hint', c, null, 'Chaque TP règle le banc d\'essai pour toi. Les cases se cochent toutes seules quand l\'oscilloscope est bien réglé ; les questions se corrigent automatiquement.');
-  const f = E('button', 'btn', c, null, 'Mode libre (tous les montages)'); f.style.marginTop = '8px'; f.addEventListener('click', () => { T.App.free(); });
+  const ls = E('button', 'btn pri', c, null, '📖 Les bases de l\'oscilloscope (à lire avant le TP 1)'); ls.style.marginTop = '8px'; ls.addEventListener('click', () => T.lessons());
+  const f = E('button', 'btn', c, null, 'Mode libre (tous les montages)'); f.style.marginLeft = '8px'; f.addEventListener('click', () => { T.App.free(); });
+};
+OL.TPUI.prototype.lessons = function () {
+  const T = this, r = T.root; r.innerHTML = ''; T.cur = null; T.checkEls = [];
+  const c = E('div', 'card lesson', r); const top = E('div', 'row', c); const back = E('button', 'btn', top, null, '← Liste des TP'); back.addEventListener('click', () => T.list());
+  E('h3', '', c, null, 'Les bases de l\'oscilloscope');
+  E('p', '', c, null, 'Manipule l\'appareil à gauche pendant que tu lis. Le bouton <b>👆 Montre-moi</b> fait clignoter la commande dont on parle.');
+  OL.LESSONS.forEach((L, i) => {
+    E('h4', '', c, null, (i + 1) + '. ' + L.t); E('div', 'learn', c, null, OL.tex(L.learn));
+    const hw = L.how && L.how[T.App.dev]; if (hw) { const ol = E('ol', 'how', c); hw.forEach(([txt, ids]) => { const li = E('li', '', ol, null, OL.tex(txt)); if (ids && ids.length) { const b = E('button', 'show', li, null, '👆 Montre-moi'); b.type = 'button'; b.addEventListener('click', () => T.App.ui.flash(ids)); } }); }
+  });
+  const go = E('button', 'btn pri', c, null, 'Commencer le TP 1 ▶'); go.style.marginTop = '10px'; go.addEventListener('click', () => T.open(OL.TPS[0]));
 };
 OL.TPUI.prototype.open = function (tp) {
   const T = this, App = T.App; T.cur = tp; T.step = 0; T.q = {}; T.seed = (Math.random() * 1e6) | 0;
@@ -1638,6 +1757,17 @@ OL.TPUI.prototype.render = function () {
   tp.steps.forEach((s, si) => {
     const d = E('div', 'step' + (si === T.step ? ' cur' : ''), c); E('h4', '', d, null, (si + 1) + '. ' + s.title);
     E('div', '', d, null, OL.tex(typeof s.html === 'function' ? s.html(ctx) : s.html));
+    const te = (OL.TEACH[tp.id] || [])[si];
+    if (te) {
+      if (te.learn) E('div', 'learn', d, null, '<b class="t">💡 À savoir</b><br>' + OL.tex(te.learn));
+      const hw = te.how && te.how[T.App.dev];
+      if (hw && hw.length) {
+        E('div', '', d, null, '<b>🛠 Pas à pas sur ' + (T.App.dev === 'owon' ? 'l\'OWON' : 'le RIGOL') + '</b>');
+        const ol = E('ol', 'how', d);
+        hw.forEach(([txt, ids]) => { const li = E('li', '', ol, null, OL.tex(txt)); if (ids && ids.length) { const b = E('button', 'show', li, null, '👆 Montre-moi'); b.type = 'button'; b.addEventListener('click', () => T.App.ui.flash(ids)); } });
+      }
+      if (te.hint) E('details', 'hint', d, null, '<summary>🆘 Un coup de pouce</summary>' + OL.tex(te.hint));
+    }
     (s.checks || []).forEach((ck, k) => { const row = E('div', 'chk', d, null, '<i>○</i><span>' + (typeof ck.label === 'function' ? ck.label(ctx) : ck.label) + '</span>'); T.checkEls.push({ row, ck, si }); });
     (s.questions || []).forEach((q, k) => {
       const id = tp.id + '.' + si + '.' + k, row = E('div', 'qrow', d); const lab = typeof q.label === 'function' ? q.label(ctx) : q.label; E('span', '', row, null, OL.tex(lab));
@@ -1769,7 +1899,7 @@ OL.TPS.push({
     { title: 'Niveau hors du signal', html: '<p>Passe le déclenchement en mode <b>Normal</b>, puis tourne le bouton <b>LEVEL</b> pour mettre le niveau <b>au-dessus du signal</b> (le repère de niveau sort de la courbe). Observe l\'indicateur d\'état : l\'appareil <b>attend</b> un déclenchement qui n\'arrive jamais.</p>' + ds('<kbd>Trigger Menu</kbd> → <kbd>H5</kbd> → Normal', '<kbd>MODE</kbd> (voyant Normal) ou <kbd>MENU</kbd> trigger → Sweep'),
       checks: [{ label: 'Mode Normal choisi', ok: c => c.st.trig.mode === 'normal' }, { label: 'L\'appareil a été vu en attente (Ready / WAIT)', ok: c => c.S.log.sawWait }],
       questions: [choice('En mode Normal sans déclenchement, l\'écran…', ['défile sans arrêt', 'garde la dernière image', 'devient noir'], 1), choice('En mode Auto sans déclenchement, l\'écran…', ['défile : image instable', 'garde la dernière image', 'devient noir'], 0)] },
-    { title: 'Stabiliser', html: '<p>Mets le niveau <b>à l\'intérieur</b> du signal (ou utilise <kbd>50%</kbd>) et choisis la <b>pente descendante</b>. Le signal doit devenir stable.</p>',
+    { title: 'Stabiliser', html: '<p>Mets le niveau <b>à l\'intérieur</b> du signal (sur l\'OWON, la touche <kbd>50%</kbd> le fait pour toi) et choisis la <b>pente descendante</b>. Le signal doit devenir stable.</p>',
       checks: [{ label: 'Pente descendante choisie', ok: c => c.st.trig.slope === 'fall' }, { label: 'Niveau à l\'intérieur du signal', ok: c => { const s = c.sig(c.B.gbf, 'out'); return c.st.trig.level > s.min + 0.15 * s.pp && c.st.trig.level < s.max - 0.15 * s.pp; } }, { label: 'Image stable', ok: c => c.S.status === "TRIG'D" }] },
     { title: 'Lire le point de déclenchement', html: '<p>Mets le <b>niveau à 2 V</b> environ. Le point de déclenchement est au centre de l\'écran (marqueur T en haut).</p>',
       checks: [{ label: 'Niveau de déclenchement entre 1,5 V et 2,5 V', ok: c => c.st.trig.level > 1.5 && c.st.trig.level < 2.5 }],
@@ -1872,7 +2002,7 @@ OL.TPS.push({
     { title: 'Afficher les deux voies', html: '<p>Voie 1 = entrée du filtre RC, voie 2 = sortie. Les deux masses sont communes. Déclenche sur la <b>voie 1</b>, mets les <b>deux traces au même niveau de zéro</b> (POSITION) et le même nombre de carreaux si possible.</p>',
       checks: [{ label: 'Déclenchement sur la voie 1', ok: c => c.st.trig.src === 0 }, { label: 'Voie 2 affichée', ok: c => c.st.ch[1].on }, { label: 'Deux à cinq périodes visibles, image stable', ok: goodView(0, 3, 7.4, 1.8, 5.2) }, { label: 'Les deux zéros sont superposés (positions identiques)', ok: c => Math.abs(c.st.ch[0].pos - c.st.ch[1].pos) < 0.3 }] },
     { title: 'Mesurer et calculer', html: '<p>Place les curseurs de temps sur deux <b>passages à zéro montants</b> (un par voie) pour lire Δt. Ou utilise la mesure automatique ' + ds('<b>Delay</b> (Measure → H4)', '<b>Delay A↑B↑</b> (Measure → Delay)') + '.</p>',
-      checks: [{ label: 'Curseurs ou mesure Delay utilisés', ok: c => curOn(c) || (c.U.meas || []).some(m => m.delay) }],
+      checks: [{ label: 'Curseurs ou mesure Delay utilisés', ok: c => curOn(c) || (c.U.meas || []).some(m => OL.MEAS2[m.key]) }],
       questions: [{ label: 'Période T', unit: 'µs', ans: c => 1e6 / c.B.rcf.freq, tol: 0.06 }, { label: 'Retard Δt entre les deux signaux (valeur positive)', unit: 'µs', ans: c => Math.abs(c.B.rcf.phaseDeg()) / 360 * 1e6 / c.B.rcf.freq, tol: 0.15, show: v => v.toFixed(1) + ' µs' }, { label: 'Déphasage |φ|', unit: '°', ans: c => Math.abs(c.B.rcf.phaseDeg()), abs: 7, show: v => v.toFixed(0) + '°' }, choice('La sortie du filtre passe-bas est…', ['en avance sur l\'entrée', 'en retard sur l\'entrée', 'en phase avec l\'entrée'], 1)] }
   ],
   note: 'Dans l\'exemple, le gain du filtre est aussi mesurable : Us/Ue = 1 / √(1 + (f/fc)²).'
@@ -1911,7 +2041,7 @@ OL.TPS.push({
   only: ['funcgen.out'],
   setup: c => { const g = c.B.gbf; g.shape = 'sine'; g.freq = 1000; g.amp = R.pick(c.r, [0.006, 0.008, 0.01]); g.offset = 0; wire(c, 0, 'funcgen.out'); c.W.ch[0].sw = 1; c.W.ch[0].trim = 0.5; c.st.ch[0].probe = 1; c.st.ch[0].vIdx = OL.nearest(c.P.vdivs, 0.002); c.st.tdivIdx = OL.nearest(c.P.tdivs, 250e-6); c.st.trig.level = 0; c.st.trig.mode = 'auto'; c.st.trig.coup = 'dc'; },
   steps: [
-    { title: 'Voir le bruit', html: '<p>Sonde en <b>×1</b> (c\'est la plus sensible, elle ne divise pas la tension). Le signal est très petit : mets la sensibilité à 2 mV/div (ou 1 mV/div). La trace est épaisse et tremblante : c\'est le bruit.</p>', checks: [{ label: 'Sensibilité ≤ 2 mV/div', ok: c => Math.abs(c.S.vdivLabel(0)) <= 0.0021 }] },
+    { title: 'Voir le bruit', html: '<p>Sonde en <b>×1</b> (c\'est la plus sensible, elle ne divise pas la tension). Le signal est très petit : mets la sensibilité au minimum (5 mV/div sur l\'OWON, 2 mV/div ou moins sur le RIGOL). La trace est épaisse et tremblante : c\'est le bruit.</p>', checks: [{ label: 'Sensibilité minimale de l\'appareil (5 mV/div sur l\'OWON, 2 mV/div ou moins sur le RIGOL)', ok: c => Math.abs(c.S.vdivLabel(0)) <= (c.dev === 'owon' ? 0.0051 : 0.0021) }] },
     { title: 'Moyenner', html: '<p>' + ds('<kbd>Acquire</kbd> → Mode <b>Average</b>, puis <b>Averages</b> = 64.', '<kbd>Acquire</kbd> → Acquisition <b>Averages</b>, puis <b>Averages</b> = 64.') + '</p>',
       checks: [{ label: 'Mode moyennage actif', ok: c => c.st.acq === 'avg' }, { label: '16 balayages ou plus', ok: c => c.st.avgN >= 16 }],
       questions: [{ label: 'Amplitude crête-à-crête du signal', unit: 'mV', ans: c => c.B.gbf.amp * 1000, tol: 0.2 }] }
@@ -1929,6 +2059,105 @@ OL.TPS.push({
     { title: 'Réparer', html: '<p>Coche « pince de masse » dans les branchements. Le parasite doit disparaître.</p>', checks: [{ label: 'Pince de masse branchée', ok: c => c.W.ch[0].ground !== false }] }
   ]
 });
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+/* teach.js — apport pédagogique : notion à comprendre (learn), pas à pas par appareil (how), coup de pouce (hint).
+   how : tableaux de [texte, [identifiants des commandes à faire clignoter]] */
+(function (g) {
+'use strict';
+const OL = g.OL = g.OL || {};
+const T = OL.TEACH = {};
+
+/* ---------- COURS « Les bases » ---------- */
+OL.LESSONS = [
+  { t: 'Ce que fait un oscilloscope', learn: 'Un oscilloscope trace <b>la tension en fonction du temps</b>. L\'axe vertical est la tension (volts), l\'axe horizontal est le temps (secondes). L\'écran est quadrillé en <b>carreaux</b> : 8 en hauteur, 12 en largeur. <b>Tout se lit en comptant des carreaux</b> puis en multipliant par un réglage.' },
+  { t: 'La sensibilité verticale : V/div', learn: 'Le réglage <b>V/div</b> (volts par carreau) dit combien de volts vaut un carreau en hauteur. Si V/div = 2 V et que le signal fait 3 carreaux, il mesure 3 × 2 = <b>6 V</b>. <b>Tourner le bouton vers la droite (sens horaire) diminue V/div</b> : le signal grandit à l\'écran.', how: { owon: [['Tourne le bouton VOLTS/DIV de la voie 1 vers la droite : le signal grandit', ['vdiv1']], ['Lis V/div en bas de l\'écran, à côté du numéro de voie', []]], rigol: [['Appuie sur CH1 pour la sélectionner (elle s\'allume)', ['ch1']], ['Tourne le bouton SCALE de la zone VERTICAL vers la droite : le signal grandit', ['vscale']], ['Lis V/div en bas de l\'écran (barre jaune de la voie 1)', []]] } },
+  { t: 'La position verticale', learn: 'Le bouton <b>POSITION</b> déplace la trace vers le haut ou le bas <b>sans changer sa valeur</b>. Le petit repère à gauche de l\'écran (flèche numérotée) montre où se trouve <b>0 V</b>. Un appui sur le bouton ramène la trace au centre.', how: { owon: [['Tourne VERTICAL POSITION de la voie 1 : le repère « 1 » monte ou descend', ['vpos1']], ['Appuie sur le bouton : remise à zéro', ['vpos1']]], rigol: [['Tourne POSITION de la zone VERTICAL (voie sélectionnée)', ['vpos']], ['Appuie dessus : remise à zéro', ['vpos']]] } },
+  { t: 'La base de temps : s/div', learn: 'Le réglage <b>s/div</b> (secondes par carreau) donne la durée d\'un carreau en largeur. Si s/div = 0,5 ms et qu\'une période occupe 4 carreaux, <b>T = 4 × 0,5 = 2 ms</b>, donc <b>f = 1/T = 500 Hz</b>. Sens horaire = s/div plus petit : le signal s\'étale.', how: { owon: [['Tourne SEC/DIV vers la droite : le signal s\'étale', ['secdiv']], ['Lis la valeur « M : … » en bas de l\'écran', []]], rigol: [['Tourne SCALE de la zone HORIZONTAL vers la droite', ['hscale']], ['Lis la valeur à côté de « H » en haut de l\'écran', []]] } },
+  { t: 'La sonde et la masse', learn: 'La sonde a <b>deux contacts</b> : la <b>pointe</b> (sur le point à mesurer) et la <b>pince de masse</b> (sur la masse du circuit, 0 V). Sans pince de masse, il n\'y a pas de mesure fiable. La sonde a aussi un interrupteur <b>×1 / ×10</b> : en ×10 elle divise la tension par 10. <b>L\'oscilloscope doit être réglé sur la même valeur</b>, sinon toutes les tensions affichées sont fausses d\'un facteur 10.' },
+  { t: 'Le couplage : DC, AC, GND', learn: '<b>DC</b> : l\'appareil affiche tout le signal (continu + variable). <b>AC</b> : un condensateur retire la partie continue, on voit seulement les variations centrées sur 0 V. <b>GND</b> : l\'entrée est reliée à la masse, la trace plate marque le zéro.', how: { owon: [['Appuie sur CH1 puis sur H1 (Coupling), puis choisis avec les touches F', ['ch1', 'h1', 'f1']]], rigol: [['Appuie sur CH1 puis sur la 1re touche du menu (Coupling) : chaque appui change DC → AC → GND', ['ch1', 'soft1']]] } },
+  { t: 'Le déclenchement (trigger)', learn: 'À chaque balayage, l\'oscilloscope doit savoir <b>où commencer</b>. Il attend que le signal <b>franchisse un niveau</b> (LEVEL) <b>dans un sens</b> (pente montante ↗ ou descendante ↘) : c\'est le point de départ, au centre de l\'écran. Si le niveau est <b>en dehors du signal</b>, il n\'y a jamais de déclenchement : l\'image défile (mode Auto) ou se fige (mode Normal).', how: { owon: [['Tourne TRIG LEVEL : le repère de niveau à droite de l\'écran monte ou descend', ['level']], ['Touche 50 % : niveau au milieu du signal', ['p50']]], rigol: [['Tourne LEVEL : le repère de niveau à droite de l\'écran monte ou descend', ['level']], ['Appuie sur LEVEL : niveau remis à 0 V', ['level']]] } },
+  { t: 'Mesurer : grille, curseurs, mesures automatiques', learn: 'Trois méthodes : (1) <b>la grille</b> (compter les carreaux, le plus important à l\'examen), (2) les <b>curseurs</b> (deux lignes déplaçables, l\'écart s\'affiche), (3) les <b>mesures automatiques</b> (fréquence, Upp, rapport cyclique… calculés par l\'appareil). Elles doivent donner le même résultat, à la précision de lecture près.', how: { owon: [['Touches Cursor et Measure', ['cursor', 'measure']]], rigol: [['Touches Cursor et Measure', ['cursor', 'measure']]] } }
+];
+
+const D = (o, r) => ({ owon: o, rigol: r });
+const probeHow = D([['Appuie sur la touche CH1 : le menu de la voie s\'affiche en bas', ['ch1']], ['Appuie sur H4 (Probe) : les choix s\'affichent à droite', ['h4']], ['Appuie sur F2 pour choisir 10X', ['f2']]],
+  [['Appuie sur la touche CH1 (elle s\'allume en vert)', ['ch1']], ['Appuie sur la 3e touche du menu à droite de l\'écran (Probe)', ['soft3']], ['Tourne le bouton multifonction jusqu\'à 10X, puis appuie dessus pour valider', ['mf']]]);
+const autoHow = D([['Appuie sur Autoset (en haut du pavé de touches)', ['autoset']]], [['Appuie sur AUTO (en haut à droite) : le menu « Auto Setting » apparaît ; le premier choix (Multi-period) convient', ['auto']]]);
+const trigSrc = D([['Appuie sur Trigger Menu (zone TRIGGER)', ['trigmenu']], ['H2 (Source) puis F1 pour CH1', ['h2', 'f1']]], [['Appuie sur MENU de la zone TRIGGER', ['trigmenu']], ['2e touche du menu (Source) : appuie jusqu\'à CH1', ['soft2']]]);
+
+T['prise-en-main'] = [
+  { learn: 'Une sonde relie le circuit à l\'oscilloscope : la <b>pointe</b> sur le point mesuré, la <b>pince de masse</b> sur la masse. Son interrupteur <b>×10</b> divise la tension par 10 ; l\'appareil doit le savoir pour réafficher la vraie valeur : il faut régler « Probe » sur <b>10X</b> dans le menu de la voie.', how: probeHow, hint: 'Après ce réglage, regarde V/div en bas de l\'écran : il est multiplié par 10 (1 V devient 10 V). C\'est le signe que l\'appareil a compris la sonde.' },
+  { learn: '<b>Autoset</b> analyse le signal et règle seul V/div, s/div et le déclenchement. Pratique pour démarrer, mais « pas toujours adapté » : à l\'examen il faut savoir régler <b>à la main</b> (TP 4).', how: autoHow, hint: 'Si rien ne se passe : la voie doit être allumée et le signal doit avoir au moins 20 mV et 20 Hz environ.' },
+  { learn: 'Sous la grille, repère <b>V/div</b> et <b>s/div</b>. Hauteur : <b>Upp = carreaux × V/div</b>. Largeur d\'une période : <b>T = carreaux × s/div</b>, puis <b>f = 1/T</b>. Exemple : 4 carreaux de 0,5 ms → T = 2 ms → f = 500 Hz.', how: D([['Compte les carreaux entre le niveau bas et le niveau haut du carré', []], ['Compte les carreaux entre deux fronts montants consécutifs', []]], [['Compte les carreaux entre le niveau bas et le niveau haut du carré', []], ['Compte les carreaux entre deux fronts montants consécutifs', []]]), hint: 'Avec un carré de 5 V (OWON) et V/div = 1 V, tu dois compter 5 carreaux de haut. Et 1 kHz = 1 ms = 5 carreaux à 200 µs/div.' }
+];
+T['compensation'] = [
+  { learn: 'La sonde ×10 est un <b>diviseur</b> auquel on ajoute un petit condensateur réglable : sans lui, le diviseur déforme les <b>fronts</b> d\'un signal carré. On règle la vis jusqu\'à ce que le carré ait des <b>coins nets</b>. <b>Sur-compensée</b> : pic au sommet. <b>Sous-compensée</b> : fronts arrondis.', how: D([['Tourne SEC/DIV jusqu\'à 200 µs/div environ', ['secdiv']], ['Tourne VOLTS/DIV pour que le carré fasse 3 à 5 carreaux de haut', ['vdiv1']], ['Observe les coins du carré', []]], [['Tourne SCALE de la zone HORIZONTAL jusqu\'à 200 µs', ['hscale']], ['Sélectionne CH1 puis tourne SCALE de la zone VERTICAL pour obtenir 3 à 5 carreaux', ['ch1', 'vscale']], ['Observe les coins du carré', []]]), hint: 'Plus la base de temps est rapide, plus le défaut est visible. Regarde le sommet juste après le front montant.' },
+  { learn: 'Chaque sonde se règle <b>sur la voie à laquelle elle est reliée</b> (chaque entrée a sa propre capacité). On tourne la vis de la sonde avec un tournevis isolant : ici, avec le curseur « Vis de compensation » du menu <b>Branchements des sondes</b>.', how: D([['Ouvre le menu « Branchements des sondes » au-dessus de l\'oscilloscope', []], ['Déplace le curseur « Vis de compensation » de la sonde 1 jusqu\'à des coins droits', []], ['Fais pareil pour la sonde 2', []]], [['Ouvre le menu « Branchements des sondes » au-dessus de l\'oscilloscope', []], ['Déplace le curseur « Vis de compensation » de la sonde 1 jusqu\'à des coins droits', []], ['Fais pareil pour la sonde 2', []]]), hint: 'Si le carré a un pic, la vis est trop d\'un côté ; s\'il est arrondi, de l\'autre : avance par petits pas en regardant l\'écran.' }
+];
+T['piege-x1-x10'] = [
+  { learn: 'L\'oscilloscope mesure la tension <b>à son entrée</b>. Avec une sonde ×10, elle est <b>10 fois plus petite</b> que celle du circuit. Si l\'appareil croit être en ×1, il affiche cette petite valeur : tout est <b>10 fois trop petit</b>. Les deux réglages (interrupteur et menu) doivent <b>toujours être identiques</b>.', how: autoHow, hint: 'Compare avec le générateur : lis l\'amplitude affichée puis celle réglée sur le générateur (menu « Générateur de fonctions »).' },
+  { learn: 'Il suffit de dire à l\'appareil que la sonde est en ×10 : V/div affiché est multiplié par 10 et les mesures redeviennent justes.', how: probeHow, hint: 'Vérifie que V/div a été multiplié par 10 après le réglage Probe.' }
+];
+T['lecture-graticule'] = [
+  { learn: 'Pour lire correctement : (1) le signal doit occuper <b>4 à 7 carreaux</b> en hauteur (sinon la lecture manque de précision), (2) il faut voir <b>2 à 4 périodes</b>, (3) l\'image doit être <b>stable</b> (déclenchement). Rappel : <b>V/div plus petit = signal plus grand</b>.', how: D([['VOLTS/DIV : tourne vers la droite pour agrandir le signal', ['vdiv1']], ['SEC/DIV : tourne vers la droite pour étaler le signal (moins de périodes, plus larges)', ['secdiv']], ['VERTICAL POSITION : centre le signal (appui = zéro)', ['vpos1']], ['TRIG LEVEL : place le niveau au milieu du signal pour le stabiliser', ['level']]], [['CH1 sélectionnée : SCALE vertical vers la droite pour agrandir', ['ch1', 'vscale']], ['SCALE horizontal : vers la droite pour étaler', ['hscale']], ['POSITION vertical : centre le signal', ['vpos']], ['LEVEL : niveau au milieu du signal', ['level']]]), hint: 'Si l\'image défile : le niveau de déclenchement est en dehors du signal. Rapproche-le de la courbe.' },
+  { learn: 'Relève les carreaux et <b>multiplie par le réglage</b>. Crête-à-crête = distance entre le point le plus haut et le plus bas. <b>Tension maximale</b> = distance de 0 V au sommet : pour un signal centré, c\'est la moitié de Upp.', hint: 'Exemple : 5,6 carreaux × 1 V/div = 5,6 V. Une période de 4 carreaux à 0,5 ms/div = 2 ms, soit 500 Hz.' }
+];
+T['couplage'] = [
+  { learn: 'Le couplage <b>GND</b> relie l\'entrée à la masse : la trace est plate et marque <b>0 V</b>. Sers-t\'en pour placer le zéro, puis repasse en <b>DC</b> : l\'écart entre le zéro et le milieu du signal est la <b>composante continue</b>.', how: D([['Appuie sur CH1 → H1 (Coupling) → F3 (GND)', ['ch1', 'h1', 'f3']], ['Place la trace sur la ligne centrale avec VERTICAL POSITION (le repère « 1 » se trouve alors au centre)', ['vpos1']], ['Retour en DC : H1 → F1', ['h1', 'f1']]], [['Appuie sur CH1, puis plusieurs fois sur la touche Coupling jusqu\'à GND', ['ch1', 'soft1']], ['Place la trace au centre avec POSITION (appui : zéro)', ['vpos']], ['Appuie encore sur Coupling jusqu\'à DC', ['soft1']]]), hint: 'La valeur moyenne vaut (carreaux entre 0 V et le milieu du signal) × V/div.' },
+  { learn: 'En <b>AC</b>, un condensateur retire la composante continue : le signal se recentre sur 0 V. Utile pour voir une <b>petite variation</b> posée sur une grande tension continue (ondulation d\'une alimentation) : on peut alors réduire V/div sans que le signal sorte de l\'écran.', how: D([['CH1 → H1 → F2 (AC)', ['ch1', 'h1', 'f2']]], [['CH1, puis Coupling jusqu\'à AC', ['ch1', 'soft1']]]), hint: 'En AC, la tension maximale d\'un signal sinusoïdal symétrique vaut la moitié de Upp.' }
+];
+T['declenchement'] = [
+  { learn: 'En <b>Auto</b>, l\'appareil dessine même sans déclenchement (image qui défile). En <b>Normal</b>, il attend ; sans déclenchement l\'écran <b>garde la dernière image</b>. Le <b>niveau</b> doit se trouver <b>à l\'intérieur</b> du signal pour qu\'un franchissement existe.', how: D([['Trigger Menu → H5 (Mode) → F2 (Normal)', ['trigmenu', 'h5', 'f2']], ['Tourne TRIG LEVEL pour mettre le repère de niveau au-dessus du signal', ['level']], ['Observe l\'état en haut à gauche de l\'écran : « Ready » (attente)', []]], [['Appuie sur MODE (zone TRIGGER) jusqu\'à ce que le voyant Normal s\'allume', ['mode']], ['Tourne LEVEL pour mettre le repère orange au-dessus du signal', ['level']], ['Observe l\'état en haut à gauche : « WAIT »', []]]), hint: 'Dans l\'appareil, le repère de niveau est la petite flèche sur le bord droit de l\'écran.' },
+  { learn: 'La <b>pente</b> choisit le sens du franchissement utilisé : ↗ montante ou ↘ descendante. Avec le niveau placé dans le signal, l\'image devient <b>stable</b> : chaque balayage démarre au même point.', how: D([['Trigger Menu → H4 (Slope) → F2 (descendante)', ['trigmenu', 'h4', 'f2']], ['Touche 50 % : niveau au milieu du signal', ['p50']]], [['MENU (TRIGGER) → 3e touche (Slope) : choisis ↘', ['trigmenu', 'soft3']], ['Tourne LEVEL pour mettre le niveau au milieu du signal', ['level']]]), hint: 'Sur OWON, la touche 50 % place le niveau automatiquement au milieu.' },
+  { learn: 'Le point de déclenchement est au <b>centre de l\'écran</b> (repère T en haut). La tension du signal à cet instant est <b>égale au niveau de déclenchement</b> : le niveau est la tension à laquelle le balayage démarre.', how: D([['Tourne TRIG LEVEL pour amener le repère de niveau vers 2 V', ['level']]], [['Tourne LEVEL pour amener le niveau vers 2 V (valeur en haut à droite de l\'écran)', ['level']]]), hint: 'Ici le niveau est affiché en volts : sur le RIGOL, en haut à droite ; sur l\'OWON, en bas à droite.' }
+];
+T['mesures-auto'] = [
+  { learn: 'Les <b>mesures automatiques</b> sont calculées sur ce qui est affiché à l\'écran. Elles sont rapides, mais il faut quelques périodes complètes à l\'écran, un signal bien cadré et une voie allumée. Le <b>rapport cyclique</b> +Duty = durée à l\'état haut / période.', how: D([['Measure → H1 (Add)', ['measure', 'h1']], ['Tourne le bouton M pour choisir le type (Freq, +Duty, Vpp…)', ['m']], ['Appuie sur F4 (Add) pour l\'ajouter à l\'écran', ['f4']], ['Recommence pour chaque mesure (8 au maximum)', []]], [['Appuie sur Measure', ['measure']], ['3e touche (Horizontal) : choisis Freq ou +Duty dans la liste (bouton multifonction puis appui)', ['soft3', 'mf']], ['4e touche (Vertical) : choisis Vpp', ['soft4']], ['Ou : touche MENU à gauche de l\'écran, puis une touche bleue de gauche mesure d\'un appui', ['qm']]]), hint: 'Les mesures s\'affichent en bas de l\'écran (RIGOL) ou en haut à gauche de la grille (OWON). Pour en retirer une, rappuie dessus (RIGOL) ou utilise Remove (OWON).' },
+  { learn: 'Pour un signal rectangulaire entre 0 et Umax, de rapport cyclique α : <b>valeur moyenne = α × Umax</b> et <b>valeur efficace = Umax × √α</b>. Compare avec ce que mesure l\'appareil : Vavg et Vrms sont calculées sur <b>tout l\'écran</b> (nombre de périodes pas toujours entier : petit écart possible).', hint: 'Exemple : Umax = 5 V, α = 0,3 → moyenne 1,5 V ; efficace 5 × √0,3 = 2,74 V.' }
+];
+T['curseurs'] = [
+  { learn: 'Il faut un signal bien cadré avant de placer des curseurs : <b>4 à 7 carreaux de haut</b>, <b>2 à 4 périodes</b>.', how: autoHow, hint: 'Utilise le TP 4 pour régler à la main si besoin.' },
+  { learn: 'Les <b>curseurs de tension</b> sont deux lignes horizontales : on lit l\'écart <b>ΔU</b> entre elles. Place l\'une sur le sommet, l\'autre sur le creux : ΔU = Upp.', how: D([['Appuie sur Cursor', ['cursor']], ['H1 (Type) → F2 (Voltage)', ['h1', 'f2']], ['Déplace les 2 curseurs avec les 2 boutons VERTICAL POSITION', ['vpos1', 'vpos2']], ['Lis ΔU dans la fenêtre en bas à gauche', []]], [['Appuie sur Cursor', ['cursor']], ['1re touche (Mode) : Manual', ['soft1']], ['2e touche (Type) : Y', ['soft2']], ['Déplace avec le bouton multifonction, après avoir appuyé sur CurA (4e touche) puis CurB (5e touche)', ['soft4', 'soft5', 'mf']], ['Lis ΔY dans la fenêtre', []]]), hint: 'Sur OWON, le curseur 1 suit le bouton POSITION de la voie 1 et le curseur 2 celui de la voie 2.' },
+  { learn: 'Les <b>curseurs de temps</b> sont deux lignes verticales : on lit <b>ΔT</b> et <b>1/ΔT</b> (la fréquence). Place-les sur deux points identiques de deux périodes consécutives : ΔT = T.', how: D([['Cursor → H1 (Type) → F3 (Time)', ['cursor', 'h1', 'f3']], ['Déplace les curseurs avec les boutons VERTICAL POSITION', ['vpos1', 'vpos2']]], [['Cursor → 2e touche (Type) : X', ['cursor', 'soft2']], ['4e touche (CurA) puis le bouton multifonction ; 5e touche (CurB) idem', ['soft4', 'soft5', 'mf']]]), hint: 'Prends des points faciles à repérer : les sommets, ou les passages par zéro avec la même pente.' }
+];
+T['ne555'] = [
+  { learn: 'Le <b>NE555 astable</b> fait osciller un condensateur entre 1/3 et 2/3 de la tension d\'alimentation. Il se charge à travers <b>R1 + R2</b> (sortie haute) et se décharge à travers <b>R2</b> (sortie basse) : donc <b>T<sub>H</sub> = 0,693 (R1+R2) C</b>, <b>T<sub>L</sub> = 0,693 R2 C</b>, <b>f = 1/(T<sub>H</sub>+T<sub>L</sub>)</b>.', how: D([['Autoset (ou réglage à la main) pour voir 2 à 4 périodes', ['autoset']], ['Measure → Add → Freq (F4), puis +Duty (F4)', ['measure', 'h1', 'm', 'f4']]], [['AUTO, puis Measure : Horizontal → Freq, +Duty', ['auto', 'measure', 'soft3']]]), hint: 'La sortie du NE555 vaut un peu moins que Vcc à l\'état haut : c\'est normal (environ Vcc − 1,7 V).' },
+  { learn: 'Compare mesure et calcul : un petit écart (quelques %) vient de la tolérance des composants et de la lecture. Le rapport cyclique est <b>toujours supérieur à 50 %</b> car la charge passe par R1 + R2, plus longue que la décharge par R2 seule.', hint: 'Convertis bien les unités : R en Ω, C en F, résultat en secondes (1 ms = 0,001 s).' }
+];
+T['pont-diodes'] = [
+  { learn: 'Le secondaire d\'un transformateur délivre une tension alternative. La valeur indiquée est la tension <b>efficace</b> ; la tension <b>maximale</b> vaut <b>Umax = Ueff × √2</b> (≈ 1,414). La fréquence est celle du secteur : 50 Hz, période 20 ms.', how: D([['Règle pour voir 2 périodes : SEC/DIV à 5 ms/div', ['secdiv']], ['Règle VOLTS/DIV pour que le signal occupe 4 à 7 carreaux', ['vdiv1']], ['Lis la tension maximale', []]], [['SCALE horizontal à 5 ms', ['hscale']], ['CH1 sélectionnée : SCALE vertical pour 4 à 7 carreaux', ['ch1', 'vscale']], ['Lis la tension maximale', []]]), hint: 'Astuce pour stabiliser : choisis AC Line comme source de déclenchement (Trigger Menu → Source).' },
+  { learn: 'Le <b>pont de diodes</b> redresse : toutes les alternances deviennent positives et la <b>fréquence double</b> (100 Hz). À chaque alternance, deux diodes conduisent en série : chacune « consomme » environ 0,7 V, d\'où <b>Umax sortie ≈ Umax − 1,4 V</b>.', how: D([['Ouvre « Branchements des sondes » et choisis « Pont de diodes — sortie redressée » pour la voie 1', []]], [['Ouvre « Branchements des sondes » et choisis « Pont de diodes — sortie redressée » pour la voie 1', []]]), hint: 'Le signal redressé a une période de 10 ms (100 Hz).' },
+  { learn: 'Un <b>condensateur de filtrage</b> se charge sur les crêtes et se décharge lentement : la tension devient presque continue avec une petite <b>ondulation</b>. Pour mesurer cette ondulation, on passe en <b>couplage AC</b> (on retire la tension continue) et on réduit V/div pour l\'agrandir.', how: D([['Ouvre « Montages en entrée » → Pont de diodes → condensateur 470 µF', []], ['CH1 → H1 → F2 (AC)', ['ch1', 'h1', 'f2']], ['VOLTS/DIV vers la droite pour agrandir l\'ondulation', ['vdiv1']]], [['Ouvre « Montages en entrée » → Pont de diodes → condensateur 470 µF', []], ['CH1, puis Coupling jusqu\'à AC', ['ch1', 'soft1']], ['SCALE vertical vers la droite pour agrandir l\'ondulation', ['vscale']]]), hint: 'Ondulation = Upp du signal en couplage AC. Plus C est grand, plus elle est petite.' }
+];
+T['rc-tau'] = [
+  { learn: 'Un condensateur chargé par une résistance suit une <b>exponentielle</b>. La <b>constante de temps τ = R × C</b> est le temps pour atteindre <b>63 %</b> de la tension finale. Au bout de <b>5 τ</b>, la charge est terminée (99 %).', how: D([['Branche CH1 sur E et CH2 sur Uc (déjà fait)', []], ['Règle SEC/DIV pour voir une charge complète sur quelques carreaux', ['secdiv']], ['Allume la voie 2 si besoin avec la touche CH2', ['ch2']]], [['CH2 allumée avec la touche CH2', ['ch2']], ['SCALE horizontal pour voir une charge complète sur quelques carreaux', ['hscale']]]), hint: 'La charge occupe environ 5 τ : choisis s/div de l\'ordre de τ.' },
+  { learn: 'Méthode des 63 % : calcule <b>0,63 × E</b>, trouve ce niveau sur la courbe, puis mesure le temps écoulé depuis le <b>début de la charge</b> (début de la montée). Les curseurs rendent la lecture plus précise.', how: D([['Cursor → H1 → F3 (Time) : curseur 1 au début de la montée, curseur 2 au point à 63 %', ['cursor', 'h1', 'f3', 'vpos1', 'vpos2']]], [['Cursor → Mode Manual, Type X : CurA au début de la montée, CurB au point à 63 %', ['cursor', 'soft1', 'soft2', 'soft4', 'soft5']]]), hint: 'Vérifie ensuite que τ mesurée ≈ R × C (R en Ω, C en F).' }
+];
+T['dephasage'] = [
+  { learn: 'Une sonde mal compensée <b>retarde</b> légèrement son signal. Pour mesurer un déphasage (quelques degrés d\'écart), il faut <b>compenser les deux sondes</b> sur la sortie de compensation de l\'appareil.', how: D([['Menu « Branchements des sondes » : mets les voies 1 et 2 sur la sortie de compensation', []], ['Règle 200 µs/div, puis les vis de compensation (TP 2)', ['secdiv']], ['Reviens au filtre : CH1 = entrée, CH2 = sortie', []]], [['Menu « Branchements des sondes » : mets les voies 1 et 2 sur la sortie de compensation', []], ['Règle 200 µs/div, puis les vis de compensation (TP 2)', ['hscale']], ['Reviens au filtre : CH1 = entrée, CH2 = sortie', []]]), hint: 'Les deux sondes doivent donner des coins nets.' },
+  { learn: 'Pour comparer deux signaux, on <b>déclenche sur la voie 1</b> (référence) et on superpose les zéros. Les deux traces doivent avoir une amplitude lisible (3 carreaux ou plus).', how: D([['CH2 allumée avec CH2', ['ch2']], ['Trigger Menu → Source = CH1', ['trigmenu', 'h2', 'f1']], ['Place les deux zéros au centre : VERTICAL POSITION de chaque voie (appui = zéro)', ['vpos1', 'vpos2']]], [['CH2 allumée avec CH2', ['ch2']], ['MENU (TRIGGER) → Source = CH1', ['trigmenu', 'soft2']], ['Sélectionne chaque voie avec CH1 / CH2 et appuie sur POSITION pour mettre le zéro au centre', ['ch1', 'ch2', 'vpos']]]), hint: 'Autoset déclenche sur la première voie qui a un signal : ici la voie 1.' },
+  { learn: 'Le <b>déphasage</b> est le décalage dans le temps entre deux signaux de même fréquence, exprimé en degrés : <b>φ = 360° × Δt / T</b>. Δt = écart entre deux passages à zéro montants (un par voie) ; T = période. Si le signal de la voie 2 arrive <b>après</b> celui de la voie 1, il est en <b>retard</b> (φ négatif).', how: D([['Cursor → Type Time ; curseur 1 au passage à zéro montant de CH1, curseur 2 à celui de CH2', ['cursor', 'vpos1', 'vpos2']], ['Ou : Measure → Add → « Delay A→B ↑ » → F4', ['measure', 'm', 'f4']]], [['Cursor → Manual, Type X : CurA sur le passage à zéro de CH1, CurB sur celui de CH2', ['cursor', 'mf']], ['Ou : Measure → Horizontal → RDelay, avec Source = CH1 et Source B = CH2', ['measure', 'soft3']]]), hint: 'Exemple : Δt = 90 µs et T = 625 µs → φ = 360 × 90 / 625 = 52°.' }
+];
+T['xy-lissajous'] = [
+  { learn: 'En mode <b>XY</b>, le temps disparaît : la voie 1 déplace le point horizontalement, la voie 2 verticalement. Deux sinus de même fréquence dessinent une <b>ellipse</b> ; la forme dépend du déphasage (droite si en phase, cercle si 90°).', how: D([['Display → H2 (Format) → F2 (XY)', ['display', 'h2', 'f2']], ['Mets les deux positions à 0 (appui sur chaque POSITION) pour centrer l\'ellipse', ['vpos1', 'vpos2']]], [['MENU de la zone HORIZONTAL → 1re touche (Time Base) : XY', ['horizmenu', 'soft1']], ['Mets les positions à 0 pour chaque voie (appui sur POSITION)', ['vpos']]]), hint: 'Ajuste V/div des deux voies pour que l\'ellipse ne sorte pas de l\'écran.' },
+  { learn: 'On repère <b>Y<sub>max</sub></b> (demi-hauteur de l\'ellipse) et <b>Y<sub>0</sub></b> (là où l\'ellipse coupe l\'axe vertical, x = 0). Alors <b>sin φ = Y<sub>0</sub> / Y<sub>max</sub></b> : φ = arcsin(Y<sub>0</sub> / Y<sub>max</sub>). Le signe du déphasage ne se lit pas en XY.', hint: 'Exemple : Y0 = 1,5 carreau et Ymax = 3 carreaux → sin φ = 0,5 → φ = 30°.' }
+];
+T['single-rebonds'] = [
+  { learn: 'Un événement unique se capture en <b>Single</b> : l\'appareil attend le déclenchement, enregistre <b>une seule fois</b>, puis s\'arrête (STOP). Il faut régler avant : niveau de déclenchement <b>entre l\'état bas et l\'état haut</b>, pente montante, base de temps adaptée (≈ 500 µs/div).', how: D([['Trigger Menu → H4 : pente ↗ (F1)', ['trigmenu', 'h4', 'f1']], ['TRIG LEVEL : niveau vers 2,5 V', ['level']], ['Appuie sur Single', ['single']]], [['MENU (TRIGGER) → Slope : ↗', ['trigmenu', 'soft3']], ['LEVEL : niveau vers 2,5 V', ['level']], ['Appuie sur SINGLE', ['single']]]), hint: 'L\'état « Ready » (OWON) ou « WAIT » (RIGOL) signifie que l\'appareil attend.' },
+  { learn: 'Un interrupteur mécanique <b>rebondit</b> : le contact s\'établit et se coupe plusieurs fois pendant quelques millisecondes avant de se stabiliser. Pour un microcontrôleur, chaque rebond est une impulsion : il compte plusieurs appuis.', how: D([['Ouvre « Montages en entrée » → Bouton poussoir → Appuyer', []]], [['Ouvre « Montages en entrée » → Bouton poussoir → Appuyer', []]]), hint: 'Si l\'appareil ne s\'arrête pas : vérifie le niveau de déclenchement et que Single est bien armé.' },
+  { learn: 'La capture est figée : on peut la mesurer tranquillement avec les curseurs. Contre les rebonds : un filtre <b>RC</b> avec porte à trigger de Schmitt, ou un anti-rebond logiciel (ignorer les changements pendant ~20 ms).', how: D([['Cursor → Time : place les curseurs sur le 1er front et sur la fin des rebonds', ['cursor']]], [['Cursor → Manual, Type X : CurA et CurB', ['cursor']]]), hint: 'Compte les paliers à 5 V avant que le signal reste définitivement haut.' }
+];
+T['bruit-moyenne'] = [
+  { learn: 'La sonde <b>×1</b> ne divise pas la tension : c\'est la plus sensible pour les petits signaux (mais bande passante limitée). Le <b>bruit</b> est une petite tension aléatoire que l\'appareil ajoute : il épaissit la trace. Pour voir 6 mV, il faut une sensibilité de 1 à 2 mV/div.', how: D([['VOLTS/DIV vers la droite jusqu\'à 5 mV/div (le minimum de l\'appareil)', ['vdiv1']]], [['Sélectionne CH1, SCALE vertical vers la droite jusqu\'à 2 mV/div', ['ch1', 'vscale']]]), hint: 'Sur l\'OWON, la sensibilité minimale est 5 mV/div ; sur le RIGOL, 1 mV/div.' },
+  { learn: 'Le mode <b>Average</b> fait la moyenne de plusieurs balayages successifs : le signal (identique à chaque balayage) reste, le bruit (différent à chaque fois) diminue d\'un facteur √N. Il faut un signal <b>répétitif et stable</b> (bon déclenchement).', how: D([['Acquire → H1 (Mode) → F3 (Average)', ['acquire', 'h1', 'f3']], ['H2 (Averages) → F3 (64)', ['h2', 'f3']]], [['Acquire → 1re touche (Mode) : Average', ['acquire', 'soft1']], ['2e touche (Averages) : 64 (liste puis appui)', ['soft2', 'mf']]]), hint: 'Avec plus de moyennes, le bruit baisse mais l\'image réagit plus lentement aux changements.' }
+];
+T['masse'] = [
+  { learn: 'Sans pince de masse, la sonde se comporte comme une antenne : elle capte le <b>secteur 50 Hz</b> (et ses harmoniques) qui se superpose au signal. Reconnaître un parasite : il se répète à <b>20 ms</b> (50 Hz), quelle que soit la fréquence du signal.', how: D([['SEC/DIV à 5 ms/div pour voir 60 ms', ['secdiv']], ['Mesure l\'intervalle entre deux motifs identiques : c\'est la période du parasite', []]], [['SCALE horizontal à 5 ms/div', ['hscale']], ['Mesure l\'intervalle entre deux motifs identiques', []]]), hint: 'Période du parasite 20 ms → f = 1/0,02 = 50 Hz.' },
+  { learn: 'La pince de masse relie la masse de l\'oscilloscope à la masse du circuit. <b>Toujours</b> la brancher, <b>au plus près</b> du point mesuré.', how: D([['Ouvre « Branchements des sondes » et coche « pince de masse »', []]], [['Ouvre « Branchements des sondes » et coche « pince de masse »', []]]), hint: 'Après branchement, le parasite doit disparaître.' }
+];
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>

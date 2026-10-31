@@ -1,6 +1,6 @@
 /* tests du moteur (Node, sans navigateur) : node tests/engine.test.js */
 const assert = require('assert'); const path = require('path');
-['util', 'signals', 'profiles', 'scope', 'measure', 'autoset'].forEach(m => require(path.join('..', 'js', m + '.js')));
+['util', 'signals', 'profiles', 'scope', 'measure', 'meas_ui', 'autoset'].forEach(m => require(path.join('..', 'js', m + '.js')));
 const O = globalThis.OL; let n = 0; const t = (name, f) => { f(); n++; console.log('ok  ' + name); };
 const mk = (dev, src, key, sw, trim) => new O.Scope(O.PROFILES[dev], { ch: [{ node: { src, key }, sw: sw || 10, trim: trim === undefined ? 0.5 : trim, ground: true }, { node: null, sw: 10, trim: 0.5, ground: true }], mism: [1.25, 0.85, 1, 1] });
 const rho = (S, i) => S.bench.mism[i] * (0.6 + 0.8 * S.bench.ch[i].trim);

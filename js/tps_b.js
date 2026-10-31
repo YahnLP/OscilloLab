@@ -91,7 +91,7 @@ OL.TPS.push({
     { title: 'Afficher les deux voies', html: '<p>Voie 1 = entrée du filtre RC, voie 2 = sortie. Les deux masses sont communes. Déclenche sur la <b>voie 1</b>, mets les <b>deux traces au même niveau de zéro</b> (POSITION) et le même nombre de carreaux si possible.</p>',
       checks: [{ label: 'Déclenchement sur la voie 1', ok: c => c.st.trig.src === 0 }, { label: 'Voie 2 affichée', ok: c => c.st.ch[1].on }, { label: 'Deux à cinq périodes visibles, image stable', ok: goodView(0, 3, 7.4, 1.8, 5.2) }, { label: 'Les deux zéros sont superposés (positions identiques)', ok: c => Math.abs(c.st.ch[0].pos - c.st.ch[1].pos) < 0.3 }] },
     { title: 'Mesurer et calculer', html: '<p>Place les curseurs de temps sur deux <b>passages à zéro montants</b> (un par voie) pour lire Δt. Ou utilise la mesure automatique ' + ds('<b>Delay</b> (Measure → H4)', '<b>Delay A↑B↑</b> (Measure → Delay)') + '.</p>',
-      checks: [{ label: 'Curseurs ou mesure Delay utilisés', ok: c => curOn(c) || (c.U.meas || []).some(m => m.delay) }],
+      checks: [{ label: 'Curseurs ou mesure Delay utilisés', ok: c => curOn(c) || (c.U.meas || []).some(m => OL.MEAS2[m.key]) }],
       questions: [{ label: 'Période T', unit: 'µs', ans: c => 1e6 / c.B.rcf.freq, tol: 0.06 }, { label: 'Retard Δt entre les deux signaux (valeur positive)', unit: 'µs', ans: c => Math.abs(c.B.rcf.phaseDeg()) / 360 * 1e6 / c.B.rcf.freq, tol: 0.15, show: v => v.toFixed(1) + ' µs' }, { label: 'Déphasage |φ|', unit: '°', ans: c => Math.abs(c.B.rcf.phaseDeg()), abs: 7, show: v => v.toFixed(0) + '°' }, choice('La sortie du filtre passe-bas est…', ['en avance sur l\'entrée', 'en retard sur l\'entrée', 'en phase avec l\'entrée'], 1)] }
   ],
   note: 'Dans l\'exemple, le gain du filtre est aussi mesurable : Us/Ue = 1 / √(1 + (f/fc)²).'
@@ -130,7 +130,7 @@ OL.TPS.push({
   only: ['funcgen.out'],
   setup: c => { const g = c.B.gbf; g.shape = 'sine'; g.freq = 1000; g.amp = R.pick(c.r, [0.006, 0.008, 0.01]); g.offset = 0; wire(c, 0, 'funcgen.out'); c.W.ch[0].sw = 1; c.W.ch[0].trim = 0.5; c.st.ch[0].probe = 1; c.st.ch[0].vIdx = OL.nearest(c.P.vdivs, 0.002); c.st.tdivIdx = OL.nearest(c.P.tdivs, 250e-6); c.st.trig.level = 0; c.st.trig.mode = 'auto'; c.st.trig.coup = 'dc'; },
   steps: [
-    { title: 'Voir le bruit', html: '<p>Sonde en <b>×1</b> (c\'est la plus sensible, elle ne divise pas la tension). Le signal est très petit : mets la sensibilité à 2 mV/div (ou 1 mV/div). La trace est épaisse et tremblante : c\'est le bruit.</p>', checks: [{ label: 'Sensibilité ≤ 2 mV/div', ok: c => Math.abs(c.S.vdivLabel(0)) <= 0.0021 }] },
+    { title: 'Voir le bruit', html: '<p>Sonde en <b>×1</b> (c\'est la plus sensible, elle ne divise pas la tension). Le signal est très petit : mets la sensibilité au minimum (5 mV/div sur l\'OWON, 2 mV/div ou moins sur le RIGOL). La trace est épaisse et tremblante : c\'est le bruit.</p>', checks: [{ label: 'Sensibilité minimale de l\'appareil (5 mV/div sur l\'OWON, 2 mV/div ou moins sur le RIGOL)', ok: c => Math.abs(c.S.vdivLabel(0)) <= (c.dev === 'owon' ? 0.0051 : 0.0021) }] },
     { title: 'Moyenner', html: '<p>' + ds('<kbd>Acquire</kbd> → Mode <b>Average</b>, puis <b>Averages</b> = 64.', '<kbd>Acquire</kbd> → Acquisition <b>Averages</b>, puis <b>Averages</b> = 64.') + '</p>',
       checks: [{ label: 'Mode moyennage actif', ok: c => c.st.acq === 'avg' }, { label: '16 balayages ou plus', ok: c => c.st.avgN >= 16 }],
       questions: [{ label: 'Amplitude crête-à-crête du signal', unit: 'mV', ans: c => c.B.gbf.amp * 1000, tol: 0.2 }] }

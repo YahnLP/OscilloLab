@@ -14,7 +14,7 @@ OL.Scope.prototype.autoset = function (opts) {
     const T = 1 / f, N = 4000; let mn = Infinity, mx = -Infinity, sm = 0;
     for (let k = 0; k < N; k++) { const v = nd.fn(k * 6 * T / N + 0.00123); if (v < mn) mn = v; if (v > mx) mx = v; sm += v; }
     const sw = S.bench.ch[i].sw, att = sw === 10 ? 0.1 : 1;
-    first.push({ i, f, pp: (mx - mn), mn, mx, mean: sm / N, ok: f >= 20 && (mx - mn) >= 0.005 });
+    first.push({ i, f, pp: (mx - mn), mn, mx, mean: sm / N, ok: f >= P.autoMinF && (mx - mn) * (sw === 10 ? 1 : 1) >= P.autoMinV });
   }
   const ok = first.filter(x => x.ok);
   if (!ok.length) { S.autosetMsg = 'Signal introuvable'; return false; }
@@ -43,6 +43,7 @@ OL.Scope.prototype.autoset = function (opts) {
   st.trig.src = lead.i; st.trig.slope = 'rise'; st.trig.mode = 'auto'; st.trig.coup = 'dc';
   st.trig.level = ((lead.mn + lead.mx) / 2) * (S.bench.ch[lead.i].sw === 10 ? 0.1 : 1) * st.ch[lead.i].probe;
   S.sel = lead.i; st.sel = lead.i;
+  S.lastAuto = { per: per, lead: lead.i };
   S.resetAvg(); return true;
 };
 })(typeof window !== 'undefined' ? window : globalThis);

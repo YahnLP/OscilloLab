@@ -29,7 +29,7 @@ SP.defaultSetup = function () {
     tdivIdx: OL.nearest(P.tdivs, 1e-3), hdelay: 0,
     ch: [], acq: 'sample', avgN: 16, dots: false, persist: 0, xy: false,
     trig: { src: 0, slope: 'rise', level: 0, mode: 'auto', coup: 'dc', holdoff: 100e-9, sweepForce: false },
-    math: { on: false, op: 'a-b' }, measure: [], cursors: { mode: 'off', x: [-2, 2], y: [-2, 2], src: 0 }, sel: 0
+    math: { on: false, op: 'a-b' }, xyPair: [0, 1], mem: 'auto', roll: false, measure: [], cursors: { mode: 'off', x: [-2, 2], y: [-2, 2], src: 0 }, sel: 0
   };
   for (let i = 0; i < P.nch; i++) this.st.ch.push({
     on: i === 0, vIdx: OL.nearest(P.vdivs, 1), pos: 0, coup: 'dc', probe: 10, inv: false, bw20: false });
@@ -39,15 +39,21 @@ SP.defaultSetup = function () {
 /* ----- accesseurs ----- */
 SP.tdiv = function () { return this.P.tdivs[this.st.tdivIdx]; };
 SP.window = function () { return this.tdiv() * this.P.hdiv; };
-SP.baseV = function (i) { return this.P.vdivs[this.st.ch[i].vIdx]; };           /* V/div à l'entrée */
+SP.baseV = function (i) { const c = this.st.ch[i]; return this.P.vdivs[c.vIdx] * (1 + 0.02 * (c.fk || 0)); };
+SP.fineStep = function (i, n) { const c = this.st.ch[i], v = this.P.vdivs, cap = Math.max(1, Math.floor((v[Math.min(c.vIdx + 1, v.length - 1)] / v[c.vIdx] - 1) / 0.02) - 1); c.fk = (c.fk || 0) + n; if (c.fk > cap) { if (c.vIdx < v.length - 1) { c.vIdx++; c.fk = 0; } else c.fk = cap; } if (c.fk < 0) { if (c.vIdx > 0) { c.vIdx--; c.fk = Math.max(0, Math.floor((v[c.vIdx + 1] / v[c.vIdx] - 1) / 0.02) - 1); } else c.fk = 0; } };
+SP.trigCh = function () { const s = this.st.trig.src; return s === 'line' ? 0 : s; };           /* V/div à l'entrée */
 SP.vdivLabel = function (i) { return this.baseV(i) * this.st.ch[i].probe; };   /* V/div affiché */
 SP.nOn = function () { return this.st.ch.filter(c => c.on).length; };
 SP.sampleRate = function () {
   const P = this.P, w = this.window();
   const srmax = P.sr(Math.max(1, this.nOn()));
-  return Math.min(srmax, P.depth / w);
+  return Math.min(srmax, this.depthNow() / w);
 };
-SP.isRoll = function () { return this.tdiv() >= this.P.rollFrom && !this.st.xy; };
+SP.depthNow = function () {
+  const P = this.P; if (!P.memOpts) return P.depth; const o = P.memOpts(Math.max(1, this.nOn())), m = this.st.mem;
+  return !m || m === 'auto' ? (this.nOn() >= 2 ? Math.min(3e6, o[o.length - 1]) : o[o.length - 1]) : (o.indexOf(m) >= 0 ? m : o[o.length - 1]);
+};
+SP.isRoll = function () { return this.P.id === 'rigol' ? (!!this.st.roll && this.tdiv() >= 0.2 && !this.st.xy) : (this.tdiv() >= this.P.rollFrom && !this.st.xy); };
 
 /* ----- chaîne verticale ----- */
 function lpStep(state, x, dt, tau) { const a = 1 - Math.exp(-dt / tau); return state + a * (x - state); }
@@ -109,7 +115,12 @@ SP.trigSignal = function (ts, shift) {
   return out;
 };
 SP.findTrigger = function (tStart, span) {
-  const st = this.st, t = st.trig, i = t.src, nd = this.nodeOf(i);
+  const st = this.st, t = st.trig, i = t.src;
+  if (i === 'line') {                       /* synchronisation sur le secteur 50 Hz (passage par zéro) */
+    const T = 0.02, up = Math.ceil(tStart / T) * T, dn = Math.ceil((tStart - T / 2) / T) * T + T / 2;
+    return t.slope === 'fall' ? dn : t.slope === 'both' ? Math.min(up, dn) : up;
+  }
+  const nd = this.nodeOf(i);
   if (!nd || !st.ch[i].on && false) return null;
   const f = nd.src.fhint ? nd.src.fhint() : 1e3;
   const dt = Math.max(1e-9, Math.min(1 / (60 * f), this.window() / 1500, span / 20));
@@ -149,12 +160,13 @@ SP.acquire = function (tLeft) {
     const c = st.ch[i]; if (!c.on && !(st.trig.src === i)) { rec.ch.push(null); continue; }
     const pre = this.preTime(i);
     /* peak detect : on suréchantillonne 8x puis on garde min/max par point d'écran */
-    const F = (st.acq === 'peak' && n > N) ? Math.max(8, Math.min(64, Math.ceil(rec.dt / 0.5e-6))) : 1;
+    const F = (st.acq === 'peak' && n > N) ? Math.max(8, Math.min(64, Math.ceil(rec.dt / 0.5e-6))) : (st.acq === 'hires' && n > N ? 8 : 1);
     const g = timeGrid(tLeft, rec.dt / F, N * F, pre), y = this.front(i, g.ts);
-    const out = new Float64Array(N), mn = F > 1 ? new Float64Array(N) : null, mx = F > 1 ? new Float64Array(N) : null;
+    const out = new Float64Array(N), pkm = st.acq === 'peak', mn = F > 1 && pkm ? new Float64Array(N) : null, mx = F > 1 && pkm ? new Float64Array(N) : null;
     const vk = this.baseV(i), noiseV = 0.0004 + vk * 0.003;
     for (let j = 0; j < N; j++) {
       if (F === 1) out[j] = y[g.m + j] + OL.gauss(this.rand) * noiseV;
+      else if (!pkm) { let s = 0; for (let q = 0; q < F; q++) s += y[g.m + j * F + q] + OL.gauss(this.rand) * noiseV; out[j] = s / F; }
       else {
         let a = Infinity, b = -Infinity;
         for (let q = 0; q < F; q++) { const v = y[g.m + j * F + q] + OL.gauss(this.rand) * noiseV; if (v < a) a = v; if (v > b) b = v; }
@@ -184,7 +196,7 @@ SP.tick = function (dtReal) {
   if (this.isRoll()) {                    /* mode ROLL : défilement sans déclenchement */
     this.status = 'ROLL'; this.scanEnd = this.simT; this.acquire(this.simT - w); return true;
   }
-  const t = st.trig, nd = this.nodeOf(t.src);
+  const t = st.trig, nd = t.src === 'line' ? true : this.nodeOf(t.src);
   const span = Math.max(0.05, w * 1.5);
   const start = Math.max(this.scanEnd || this.simT, this.simT - 2);   /* le balayage de déclenchement est continu */
   const tt = nd ? this.findTrigger(start, span) : null;
@@ -202,7 +214,7 @@ SP.tick = function (dtReal) {
 };
 /* compteur de fréquence matériel : fréquence du signal de déclenchement si l'appareil est déclenché */
 SP.counterFreq = function () {
-  const nd = this.nodeOf(this.st.trig.src); if (!nd || this.status !== "TRIG'D" && this.status !== 'STOP') return null;
+  const nd = this.st.trig.src === 'line' ? null : this.nodeOf(this.st.trig.src); if (!nd || this.status !== "TRIG'D" && this.status !== 'STOP') return null;
   if (!this.lastTrig) return null; const f = nd.src.fhint ? nd.src.fhint() : null; if (!f) return null;
   const nodeKey = nd.key; if (nd.src.kind === 'bridge' && nodeKey === 'out') return f * (nd.src.full ? 2 : 1);
   return f;
