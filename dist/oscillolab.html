@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- OscilloLab — © Yahn LE PRETTRE, Enseignant à la MFR de Pontonx — Licence CC BY-NC-SA 4.0 — https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr -->
+<html lang="fr"><head><meta charset="utf-8"><meta name="author" content="Yahn LE PRETTRE"><meta name="copyright" content="© Yahn LE PRETTRE — CC BY-NC-SA 4.0"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OscilloLab — simulateur d'oscilloscopes OWON SDS5032E et RIGOL DS1054Z</title>
 <style>
 :root { --bg:#10151c; --ink:#e8edf3; --mut:#8fa0b3; --acc:#37a0ff; --ok:#27c26a; --bad:#ff5a5a; }
@@ -127,6 +128,9 @@ details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:poi
 
 .rkey.lit { background: linear-gradient(#d4ff6a,#8fe000) !important; color:#102 !important; box-shadow:0 0 0 1px #4a7a00, 0 0 10px #a6ff2a; }
 
+.foot { text-align:center; color:var(--mut); font-size:12.5px; padding:10px 14px 16px; border-top:1px solid #243040; } .foot a { color:#8fd0ff; }
+@media (min-width: 1251px) { .foot { position:fixed; left:0; right:0; bottom:0; background:#0b0f14; padding:5px 14px; } main { height: calc(100vh - 82px) !important; } #side { height: calc(100vh - 106px) !important; } }
+
 </style>
 </head><body>
 <header class="top"><h1><b>Oscillo</b>Lab</h1>
@@ -136,6 +140,7 @@ details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:poi
 <div id="benchPop"><div data-p="wire"></div><div data-p="gbf"></div><div data-p="mont"></div></div>
 <div id="scopeWrap"><div id="scopeBox"></div></div></div>
 <aside id="side"><div id="tpPane"></div></aside></main>
+<footer class="foot">© Yahn LE PRETTRE, Enseignant à la MFR de Pontonx · <a rel="license" href="https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr" target="_blank">Licence CC BY-NC-SA 4.0</a> · <a href="https://github.com/YahnLP/OscilloLab" target="_blank">Code source sur GitHub</a></footer>
 <script>
 /* util.js — outils communs (navigateur et Node) */
 (function (g) {
@@ -2161,7 +2166,8 @@ T['masse'] = [
 
 </script>
 <script>
-/* app.js — assemblage : paillasse, oscilloscope, TP, boucle d'animation */
+/* app.js — assemblage : paillasse, oscilloscope, TP, boucle d'animation
+   © Yahn LE PRETTRE, Enseignant à la MFR de Pontonx — Licence CC BY-NC-SA 4.0 */
 (function (g) {
 'use strict';
 const OL = g.OL = g.OL || {};

@@ -122,3 +122,6 @@ details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:poi
 .lesson h4 { margin:12px 0 4px; color:#8fd0ff; }
 
 .rkey.lit { background: linear-gradient(#d4ff6a,#8fe000) !important; color:#102 !important; box-shadow:0 0 0 1px #4a7a00, 0 0 10px #a6ff2a; }
+
+.foot { text-align:center; color:var(--mut); font-size:12.5px; padding:10px 14px 16px; border-top:1px solid #243040; } .foot a { color:#8fd0ff; }
+@media (min-width: 1251px) { .foot { position:fixed; left:0; right:0; bottom:0; background:#0b0f14; padding:5px 14px; } main { height: calc(100vh - 82px) !important; } #side { height: calc(100vh - 106px) !important; } }

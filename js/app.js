@@ -1,4 +1,5 @@
-/* app.js — assemblage : paillasse, oscilloscope, TP, boucle d'animation */
+/* app.js — assemblage : paillasse, oscilloscope, TP, boucle d'animation
+   © Yahn LE PRETTRE, Enseignant à la MFR de Pontonx — Licence CC BY-NC-SA 4.0 */
 (function (g) {
 'use strict';
 const OL = g.OL = g.OL || {};

@@ -1,5 +1,7 @@
 # OscilloLab — simulateur des oscilloscopes OWON SDS5032E(V) et RIGOL DS1054Z
 
+Auteur : Yahn LE PRETTRE, Enseignant à la MFR de Pontonx — licence CC BY-NC-SA 4.0.
+
 Simulateur **hors ligne** (HTML/CSS/JS pur, aucune dépendance), dans l'esprit d'**ElectroLab** : on apprend à **régler l'oscilloscope** sur l'appareil lui-même, avec des **TP corrigés automatiquement**.
 
 - Deux faces avant interactives : **OWON SDS5032E(V)** (2 voies, 30 MHz, 250 MS/s, 10 k points) et **RIGOL DS1054Z / Plus** (4 voies, 100 MHz, 1 GSa/s, 24 Mpts).
@@ -58,3 +60,9 @@ Les menus du RIGOL suivent le **manuel officiel DS1000Z** (listes de mesures, m�
 - **RIGOL :** déclenchements autres que sur front (menu présent, avec message), base de temps retardée (appui sur SCALE horizontal), FFT et fonctions mathématiques autres que A+B, A−B, A×B, A/B, statistiques de mesure, curseurs Auto et XY, REF, enregistrement, Pass/Fail, décodage série (option payante sur l'appareil), voies logiques (absentes du DS1054Z).
 - **OWON :** entrée EXT, FFT, déclenchements Pulse / Video / Slope / Alternate, mode Scan particulier, sauvegarde de traces.
 - **Ni l'un ni l'autre :** réglage de la luminosité de l'écran, langue de l'interface.
+
+## Licence
+© Yahn LE PRETTRE, Enseignant à la MFR de Pontonx.
+Contenus et code : **[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.fr)** — partage et adaptation autorisés avec mention de l'auteur, sans usage commercial, et sous la même licence (voir [`LICENSE.md`](LICENSE.md)).
+
+OWON et RIGOL sont des marques de leurs propriétaires respectifs ; ce simulateur est un outil pédagogique indépendant, non affilié à ces fabricants.
