@@ -27,15 +27,14 @@ OL.OwonUI = function (root, S) {
 
   /* touches H et F */
   const hk = [], fk = [];
-  for (let i = 0; i < 5; i++) hk.push(OL.Key(box, { x: 303 + i * 48 - 20 + 6, y: 421, w: 40, h: 22, label: 'H' + (i + 1), cls: 'round', on: () => pressH(i) }));
+  for (let i = 0; i < 5; i++) hk.push(OL.Key(box, { x: 241 + 54.7 * i, y: 421, w: 40, h: 22, label: 'H' + (i + 1), cls: 'round', on: () => pressH(i) }));
   for (let i = 0; i < 5; i++) fk.push(OL.Key(box, { x: 556, y: 90 + i * 58 - 4, w: 38, h: 30, label: 'F' + (i + 1), cls: 'round', on: () => pressF(i) }));
-  OL.Key(box, { x: 556, y: 347, w: 38, h: 22, label: 'Menu<br>off', cls: 'round tiny', on: () => { U.menu = null; U.open = -1; } });
+  OL.Key(box, { x: 556, y: 356, w: 38, h: 22, label: 'Menu<br>off', cls: 'round tiny', on: () => { U.menu = null; U.open = -1; } });
 
   /* panneau de commande */
   E('div', 'o-zone', box, { left: '603px', top: '4px', width: '326px', height: '478px' });
   const mk = (x, y, label, cls, fn, w, h) => OL.Key(box, { x, y, w: w || 56, h: h || 24, label, cls, on: fn });
   OL.Knob(box, { x: 610, y: 52, r: 24, cls: 'bigk', label: 'M', ly: -9999, turn: n => mKnob(n), push: () => mPush() });
-  OL.Label(box, 596, 3, 'M', 'm-label', 28);
   const kx = [648, 716, 784], ky = [66, 101, 142];
   const bk = {};
   bk.measure = mk(kx[0], ky[0] - 12, 'Measure', 'white', () => openMenu('measure'));
@@ -47,33 +46,33 @@ OL.OwonUI = function (root, S) {
   bk.save = mk(kx[0], ky[2] - 14, 'Save', 'white', () => openMenu('save'));
   bk.display = mk(kx[1], ky[2] - 14, 'Display', 'white', () => openMenu('display'));
   bk.help = mk(kx[2], ky[2] - 14, 'Help', 'white', () => { U.help = !U.help; });
-  mk(606, 118, 'Copy', 'grey round', () => copyShot(), 44, 22);
+  mk(606, 118, 'Copy', 'grey round', () => copyShot(), 38, 22);
   bk.run = OL.Key(box, { x: 858, y: 66, w: 62, h: 34, label: 'Run/Stop', cls: 'green round', on: () => { st.run = !st.run; if (st.run) st.single = false; } });
   bk.single = OL.Key(box, { x: 858, y: 114, w: 62, h: 34, label: 'Single', cls: 'grey round', on: () => { S.arm(); } });
 
   /* zone verticale */
-  E('div', 'o-vert', box, { left: '612px', top: '176px', width: '168px', height: '234px' });
-  OL.Label(box, 612, 180, 'VERTICAL POSITION', 'zl', 168);
+  E('div', 'o-vert', box, { left: '612px', top: '176px', width: '160px', height: '234px' });
+  OL.Label(box, 612, 180, 'VERTICAL POSITION', 'zl', 160);
   const kpos = [], kv = [];
   for (let i = 0; i < 2; i++) {
-    const x = 640 + i * 70;
+    const x = 652 + i * 70;
     kpos.push(OL.Knob(box, { x, y: 213, r: 16, cls: 'smk', turn: n => vpos(i, n), push: () => vposPush(i) }));
     OL.Label(box, x - 30, 262, 'MENU', 'zl', 60);
     bk['ch' + i] = OL.Key(box, { x: x - 20, y: 274, w: 40, h: 22, label: 'CH' + (i + 1), cls: i ? 'ch2' : 'ch1', on: () => chKey(i) });
     OL.Label(box, x - 30, 330, 'VOLTS/DIV', 'zl', 60);
     kv.push(OL.Knob(box, { x, y: 365, r: 27, cls: 'bigk', turn: n => vdiv(i, n), push: () => {} }));
   }
-  bk.math = OL.Key(box, { x: 664, y: 241, w: 34, h: 20, label: 'Math', cls: 'blue', on: () => { st.math.on = !st.math.on; if (st.math.on) openMenu('math'); } });
+  bk.math = OL.Key(box, { x: 675, y: 241, w: 34, h: 20, label: 'Math', cls: 'blue', on: () => { st.math.on = !st.math.on; if (st.math.on) openMenu('math'); } });
   /* zone horizontale */
-  E('div', 'o-hor', box, { left: '774px', top: '176px', width: '78px', height: '234px' });
-  OL.Label(box, 774, 180, 'HORIZONTAL POSITION', 'zl', 78);
+  E('div', 'o-hor', box, { left: '776px', top: '176px', width: '76px', height: '234px' });
+  OL.Label(box, 776, 180, 'HORIZONTAL POSITION', 'zl', 76);
   OL.Knob(box, { x: 813, y: 213, r: 17, cls: 'smk', turn: n => { st.hdelay += n * S.tdiv() / 25 * (-1); st.hdelay = hclamp(st.hdelay); }, push: () => { st.hdelay = 0; } });
   OL.Label(box, 783, 262, 'MENU', 'zl', 60);
   bk.horiz = OL.Key(box, { x: 790, y: 274, w: 46, h: 22, label: 'HORIZ', cls: 'darkblue', on: () => openMenu('horiz') });
   OL.Label(box, 783, 330, 'SEC/DIV', 'zl', 60);
   OL.Knob(box, { x: 813, y: 365, r: 28, cls: 'bigk', turn: n => tdiv(n), push: () => {} });
   /* déclenchement */
-  E('div', 'o-trg', box, { left: '858px', top: '176px', width: '66px', height: '230px' });
+  E('div', 'o-trg', box, { left: '858px', top: '176px', width: '66px', height: '210px' });
   OL.Label(box, 858, 180, 'Trigger', 'zl', 66);
   bk.trigmenu = OL.Key(box, { x: 866, y: 198, w: 50, h: 28, label: 'Menu', cls: 'darkblue2', on: () => openMenu('trig') });
   OL.Label(box, 858, 232, 'TRIG LEVEL', 'zl', 66);
@@ -82,12 +81,12 @@ OL.OwonUI = function (root, S) {
   bk.force = OL.Key(box, { x: 866, y: 352, w: 50, h: 28, label: 'Force', cls: 'white', on: () => S.force() });
   /* BNC */
   const bnc = (x, y, t) => { E('div', 'bnc', box, { left: (x - 20) + 'px', top: (y - 20) + 'px' }, '<i></i>'); OL.Label(box, x - 30, y + 22, t, 'zl dark', 60); };
-  bnc(640, 430, 'CH1'); bnc(710, 430, 'CH2'); bnc(813, 430, 'EXT TRIG');
-  OL.Label(box, 616, 405, 'X', 'zl dark', 20); OL.Label(box, 700, 405, 'Y', 'zl dark', 20);
-  OL.Label(box, 852, 392, 'PROBE COMP', 'zl dark', 90);
+  bnc(652, 430, 'CH1'); bnc(722, 430, 'CH2'); bnc(813, 430, 'EXT TRIG');
+  OL.Label(box, 626, 396, 'X', 'zl dark', 16); OL.Label(box, 714, 396, 'Y', 'zl dark', 16);
+  OL.Label(box, 855, 392, 'PROBE COMP', 'zl dark', 72);
   E('div', 'comp-term', box, { left: '881px', top: '408px' }, '<i class="pin"></i><i class="gnd"></i>');
-  OL.Label(box, 852, 458, '5V&nbsp;1kHz', 'zl dark', 90);
-  U.bnc = { ch: [{ x: 640, y: 430 }, { x: 710, y: 430 }], comp: { x: 893, y: 422 }, gnd: { x: 893, y: 443 } };
+  OL.Label(box, 855, 458, '5V&nbsp;1kHz', 'zl dark', 72);
+  U.bnc = { ch: [{ x: 652, y: 430 }, { x: 722, y: 430 }], comp: { x: 893, y: 422 }, gnd: { x: 893, y: 443 } };
 
   /* ===== logique des commandes ===== */
   function hclamp(v) { const lim = 6 * S.tdiv() * 50; return Math.max(-lim, Math.min(lim, v)); }
@@ -311,8 +310,8 @@ OL.OwonUI = function (root, S) {
     if (U.open >= 0 && items[U.open] && items[U.open].opts) {
       const it = items[U.open]; let opts = typeof it.opts === 'function' ? it.opts() : it.opts; let first = 0;
       if (opts.length > 5) { first = U.page * 4; const show = opts.slice(first, first + 4); show.push({ t: 'Page ' + (U.page + 1) + '/' + Math.ceil(opts.length / 4) + ' ▼' }); opts = show; first = 0; }
-      opts.forEach((o, k) => { const y = 82 + k * 58 - 4; const g = c.createLinearGradient(0, y, 0, y + 52); g.addColorStop(0, '#2a74c8'); g.addColorStop(1, '#0d3a78'); OL.rrect(c, 690, y, 108, 52, 6, g, '#aee', 1);
-        const t = typeof o.t === 'function' ? o.t() : o.t; const parts = String(t).split('<br>'); parts.forEach((p, q) => OL.text(c, p, 744, y + 26 + (q - (parts.length - 1) / 2) * 17, { size: 15, align: 'center' })); });
+      opts.forEach((o, k) => { const y = 53 + k * 97; const g = c.createLinearGradient(0, y, 0, y + 84); g.addColorStop(0, '#2a74c8'); g.addColorStop(1, '#0d3a78'); OL.rrect(c, 690, y, 108, 84, 6, g, '#aee', 1);
+        const t = typeof o.t === 'function' ? o.t() : o.t; const parts = String(t).split('<br>'); parts.forEach((p, q) => OL.text(c, p, 744, y + 42 + (q - (parts.length - 1) / 2) * 18, { size: 16, align: 'center' })); });
     }
   }
   /* repères des commandes (pour le bouton « Montre-moi » des TP) */

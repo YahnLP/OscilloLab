@@ -20,17 +20,17 @@ OL.RigolUI = function (root, S) {
   /* touches programmables */
   const sk = [];
   const mkSoft = (side, i) => {
-    const x = side === 'l' ? 28 : 676, y = 86 + i * 44;
+    const x = side === 'l' ? 28 : 676, y = 82 + i * 44;
     return OL.Key(box, { x, y, w: 46, h: 30, label: '', cls: 'rkey ' + (side === 'l' ? 'soft' : 'softr'), on: () => (side === 'l' ? pressQM(i) : pressSoft(i)) });
   };
   const rs = [], ls = [];
   for (let i = 0; i < 6; i++) { ls.push(mkSoft('l', i)); rs.push(mkSoft('r', i)); }
-  OL.Key(box, { x: 28, y: 44, w: 46, h: 26, label: 'MENU', cls: 'rkey arrow', on: () => { U.qm = U.qm === null ? 0 : (U.qm === 0 ? 1 : null); U.qmPage = 0; } });
-  OL.Key(box, { x: 676, y: 44, w: 46, h: 26, label: '▲', cls: 'rkey arrow', on: () => { U.page = Math.max(0, U.page - 1); } });
-  OL.Key(box, { x: 676, y: 352, w: 46, h: 26, label: '▼', cls: 'rkey arrow', on: () => { U.page = U.page + 1; } });
+  OL.Key(box, { x: 28, y: 40, w: 46, h: 30, label: 'MENU', cls: 'rkey arrow', on: () => { U.qm = U.qm === null ? 0 : (U.qm === 0 ? 1 : null); U.qmPage = 0; } });
+  OL.Key(box, { x: 676, y: 40, w: 46, h: 30, label: '▲', cls: 'rkey arrow', on: () => { U.page = Math.max(0, U.page - 1); } });
+  OL.Key(box, { x: 676, y: 340, w: 46, h: 30, label: '▼', cls: 'rkey arrow', on: () => { U.page = U.page + 1; } });
   const qmN = () => Math.ceil((U.qm === 1 ? OL.RIGOL_V : OL.RIGOL_H).length / 6);
-  OL.Key(box, { x: 28, y: 336, w: 46, h: 22, label: '▲', cls: 'rkey arrow', on: () => { U.qmPage = Math.max(0, (U.qmPage || 0) - 1); } });
-  OL.Key(box, { x: 28, y: 362, w: 46, h: 22, label: '▼', cls: 'rkey arrow', on: () => { U.qmPage = Math.min(qmN() - 1, (U.qmPage || 0) + 1); } });
+  OL.Key(box, { x: 28, y: 340, w: 46, h: 20, label: '▲', cls: 'rkey arrow', on: () => { U.qmPage = Math.max(0, (U.qmPage || 0) - 1); } });
+  OL.Key(box, { x: 28, y: 364, w: 46, h: 20, label: '▼', cls: 'rkey arrow', on: () => { U.qmPage = Math.min(qmN() - 1, (U.qmPage || 0) + 1); } });
 
   const K = (x, y, w, h, label, cls, fn) => OL.Key(box, { x, y, w, h, label, cls: 'rkey ' + cls, on: fn });
   /* rangée du haut */
@@ -53,15 +53,15 @@ OL.RigolUI = function (root, S) {
   for (let i = 0; i < 4; i++) {
     const k = K(738, 186 + i * 36, 46, 26, 'CH' + (i + 1), 'ring', () => chKey(i)); k.style.borderColor = cols[i]; k.style.boxShadow = '0 0 0 1px ' + cols[i] + ', 0 2px 0 #14161a'; chk.push(k);
   }
-  K(800, 336, 40, 24, 'MATH', 'ring', () => openMenu('math'));
-  K(850, 336, 40, 24, 'REF', 'ring', () => msg('REF : non simulé'));
+  K(796, 254, 40, 24, 'MATH', 'ring', () => openMenu('math'));
+  K(846, 254, 40, 24, 'REF', 'ring', () => msg('REF : forme d\'onde de référence non simulée'));
   OL.Knob(box, { x: 830, y: 218, r: 22, cls: 'rk', turn: n => vpos(n), push: () => { st.ch[U.sel].pos = 0; }, title: 'POSITION' }); OL.Label(box, 800, 242, 'POSITION', 'rl', 60);
-  OL.Knob(box, { x: 850, y: 296, r: 0 + 26, cls: 'rk', turn: n => vdiv(n), push: () => { const c = st.ch[U.sel]; c.fineMode = !c.fineMode; c.fk = c.fineMode ? c.fk : 0; msg(c.fineMode ? 'Volts/Div : réglage fin' : 'Volts/Div : réglage par paliers'); }, title: 'SCALE (appui : fin / paliers)' }); OL.Label(box, 820, 324, 'SCALE', 'rl', 60);
+  OL.Knob(box, { x: 846, y: 322, r: 26, cls: 'rk', turn: n => vdiv(n), push: () => { const c = st.ch[U.sel]; c.fineMode = !c.fineMode; c.fk = c.fineMode ? c.fk : 0; msg(c.fineMode ? 'Volts/Div : réglage fin' : 'Volts/Div : réglage par paliers'); }, title: 'SCALE (appui : fin / paliers)' }); OL.Label(box, 816, 351, 'SCALE', 'rl', 60);
   /* HORIZONTAL */
   E('div', 'r-zone', box, { left: '908px', top: '172px', width: '92px', height: '210px' }); OL.Label(box, 910, 164, 'HORIZONTAL', 'rl', 90);
-  OL.Knob(box, { x: 946, y: 206, r: 20, cls: 'rk', turn: n => { st.hdelay -= n * S.tdiv() / 25; st.hdelay = Math.max(-60 * S.tdiv(), Math.min(60 * S.tdiv(), st.hdelay)); }, push: () => { st.hdelay = 0; } }); OL.Label(box, 916, 228, 'POSITION', 'rl', 60);
-  K(924, 258, 44, 24, 'MENU', 'light', () => openMenu('horiz'));
-  OL.Knob(box, { x: 946, y: 326, r: 26, cls: 'rk', turn: n => tdiv(n), push: () => { } }); OL.Label(box, 916, 354, 'SCALE', 'rl', 60);
+  OL.Knob(box, { x: 954, y: 206, r: 20, cls: 'rk', turn: n => { st.hdelay -= n * S.tdiv() / 25; st.hdelay = Math.max(-60 * S.tdiv(), Math.min(60 * S.tdiv(), st.hdelay)); }, push: () => { st.hdelay = 0; } }); OL.Label(box, 924, 228, 'POSITION', 'rl', 60);
+  K(932, 258, 44, 24, 'MENU', 'light', () => openMenu('horiz'));
+  OL.Knob(box, { x: 954, y: 326, r: 26, cls: 'rk', turn: n => tdiv(n), push: () => { } }); OL.Label(box, 924, 354, 'SCALE', 'rl', 60);
   /* TRIGGER */
   E('div', 'r-zone', box, { left: '1006px', top: '172px', width: '80px', height: '210px' }); OL.Label(box, 1008, 164, 'TRIGGER', 'rl', 76);
   const bMode = K(1024, 184, 44, 22, 'MODE', 'light', () => { const t = st.trig; t.mode = t.mode === 'auto' ? 'normal' : t.mode === 'normal' ? 'single' : 'auto'; if (t.mode === 'single') S.arm(); });
