@@ -37,11 +37,13 @@ OL.TPUI = function (parent, App) {
 };
 OL.TPUI.prototype.list = function () {
   const T = this, r = T.root; r.innerHTML = ''; T.cur = null; document.getElementById('tpName').textContent = '';
-  const c = E('div', 'card', r); E('h3', '', c, null, 'Travaux pratiques'); const L = E('div', 'tplist', c);
+  const c = E('div', 'card', r); E('h3', '', c, null, 'Travaux pratiques');
+  const top = E('div', 'row', c);
+  const ls = E('button', 'btn pri', top, null, '📖 Les bases de l\'oscilloscope (à lire avant le TP 1)'); ls.addEventListener('click', () => T.lessons());
+  const f = E('button', 'btn', top, null, 'Mode libre (tous les montages)');  f.addEventListener('click', () => { T.App.free(); });
+  const L = E('div', 'tplist', c);
   OL.TPS.forEach(tp => { const b = E('button', 'btn' + (T.done[tp.id] ? ' done' : ''), L, null, '<b>' + tp.n + '.</b> ' + tp.title + ' <span class="hint">— ' + tp.level + '</span>'); b.addEventListener('click', () => T.open(tp)); });
   E('div', 'hint', c, null, 'Chaque TP règle le banc d\'essai pour toi. Les cases se cochent toutes seules quand l\'oscilloscope est bien réglé ; les questions se corrigent automatiquement.');
-  const ls = E('button', 'btn pri', c, null, '📖 Les bases de l\'oscilloscope (à lire avant le TP 1)'); ls.style.marginTop = '8px'; ls.addEventListener('click', () => T.lessons());
-  const f = E('button', 'btn', c, null, 'Mode libre (tous les montages)'); f.style.marginLeft = '8px'; f.addEventListener('click', () => { T.App.free(); });
 };
 OL.TPUI.prototype.lessons = function () {
   const T = this, r = T.root; r.innerHTML = ''; T.cur = null; T.checkEls = [];

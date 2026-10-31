@@ -47,13 +47,14 @@ function loop(now) {
 g.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('#devSeg button').forEach(b => b.addEventListener('click', () => { App.build(b.dataset.d, App.tp, App.seed); if (App.tp) App.tpui.render(); }));
   g.addEventListener('resize', () => App.fit());
-  const pop = $('#benchPop'); const show = k => { pop.classList.toggle('open', !!k); pop.querySelectorAll(':scope > div').forEach(d => { d.style.display = d.dataset.p === k ? '' : 'none'; }); document.querySelectorAll('#benchBar button').forEach(b => b.classList.toggle('pri', b.dataset.p === k)); App.pop = k; };
-  document.querySelectorAll('#benchBar button').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); show(App.pop === b.dataset.p ? null : b.dataset.p); }));
+  const pop = $('#benchPop'); const show = k => { pop.classList.toggle('open', !!k); pop.querySelectorAll(':scope > div').forEach(d => { d.style.display = d.dataset.p === k ? '' : 'none'; }); document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.classList.toggle('pri', b.dataset.p === k)); App.pop = k; };
+  document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); show(App.pop === b.dataset.p ? null : b.dataset.p); }));
   /* fenêtre déplaçable (par son titre) : on peut la ranger sur le côté pour garder l'écran visible */
   let drag = null;
   pop.addEventListener('pointerdown', e => { const h = e.target.closest('h3'); if (!h) return; const box = h.closest('#benchPop > div'); drag = { box, x: e.clientX, y: e.clientY, l: box.offsetLeft, t: box.offsetTop }; h.setPointerCapture(e.pointerId); h.style.cursor = 'grabbing'; });
   pop.addEventListener('pointermove', e => { if (!drag) return; drag.box.style.left = (drag.l + e.clientX - drag.x) + 'px'; drag.box.style.top = (drag.t + e.clientY - drag.y) + 'px'; });
   pop.addEventListener('pointerup', () => { drag = null; });
+  document.querySelector('#benchBar button[data-a=lessons]').addEventListener('click', e => { e.stopPropagation(); show(null); App.tpui.lessons(); document.getElementById('side').scrollTop = 0; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') show(null); });
   show(null);
   App.tpui = new OL.TPUI($('#tpPane'), App);

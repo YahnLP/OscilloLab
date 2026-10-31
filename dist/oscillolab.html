@@ -136,7 +136,7 @@ details.hint { margin:6px 0; font-size:13px; } details.hint summary { cursor:poi
 <header class="top"><h1><b>Oscillo</b>Lab</h1>
 <div class="seg" id="devSeg"><button data-d="owon" class="on">OWON SDS5032E(V)</button><button data-d="rigol">RIGOL DS1054Z</button></div>
 <span id="tpName" style="color:#8fa0b3"></span></header>
-<main><div><div id="benchBar"><button class="btn" data-p="wire">🔌 Branchements des sondes</button><button class="btn" data-p="gbf">〰 Générateur de fonctions</button><button class="btn" data-p="mont">🧩 Montages en entrée</button></div>
+<main><div><div id="benchBar"><button class="btn pri" data-a="lessons">📖 Les bases de l'oscilloscope</button><button class="btn" data-p="wire">🔌 Branchements des sondes</button><button class="btn" data-p="gbf">〰 Générateur de fonctions</button><button class="btn" data-p="mont">🧩 Montages en entrée</button></div>
 <div id="benchPop"><div data-p="wire"></div><div data-p="gbf"></div><div data-p="mont"></div></div>
 <div id="scopeWrap"><div id="scopeBox"></div></div></div>
 <aside id="side"><div id="tpPane"></div></aside></main>
@@ -1728,11 +1728,13 @@ OL.TPUI = function (parent, App) {
 };
 OL.TPUI.prototype.list = function () {
   const T = this, r = T.root; r.innerHTML = ''; T.cur = null; document.getElementById('tpName').textContent = '';
-  const c = E('div', 'card', r); E('h3', '', c, null, 'Travaux pratiques'); const L = E('div', 'tplist', c);
+  const c = E('div', 'card', r); E('h3', '', c, null, 'Travaux pratiques');
+  const top = E('div', 'row', c);
+  const ls = E('button', 'btn pri', top, null, '📖 Les bases de l\'oscilloscope (à lire avant le TP 1)'); ls.addEventListener('click', () => T.lessons());
+  const f = E('button', 'btn', top, null, 'Mode libre (tous les montages)');  f.addEventListener('click', () => { T.App.free(); });
+  const L = E('div', 'tplist', c);
   OL.TPS.forEach(tp => { const b = E('button', 'btn' + (T.done[tp.id] ? ' done' : ''), L, null, '<b>' + tp.n + '.</b> ' + tp.title + ' <span class="hint">— ' + tp.level + '</span>'); b.addEventListener('click', () => T.open(tp)); });
   E('div', 'hint', c, null, 'Chaque TP règle le banc d\'essai pour toi. Les cases se cochent toutes seules quand l\'oscilloscope est bien réglé ; les questions se corrigent automatiquement.');
-  const ls = E('button', 'btn pri', c, null, '📖 Les bases de l\'oscilloscope (à lire avant le TP 1)'); ls.style.marginTop = '8px'; ls.addEventListener('click', () => T.lessons());
-  const f = E('button', 'btn', c, null, 'Mode libre (tous les montages)'); f.style.marginLeft = '8px'; f.addEventListener('click', () => { T.App.free(); });
 };
 OL.TPUI.prototype.lessons = function () {
   const T = this, r = T.root; r.innerHTML = ''; T.cur = null; T.checkEls = [];
@@ -2215,13 +2217,14 @@ function loop(now) {
 g.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('#devSeg button').forEach(b => b.addEventListener('click', () => { App.build(b.dataset.d, App.tp, App.seed); if (App.tp) App.tpui.render(); }));
   g.addEventListener('resize', () => App.fit());
-  const pop = $('#benchPop'); const show = k => { pop.classList.toggle('open', !!k); pop.querySelectorAll(':scope > div').forEach(d => { d.style.display = d.dataset.p === k ? '' : 'none'; }); document.querySelectorAll('#benchBar button').forEach(b => b.classList.toggle('pri', b.dataset.p === k)); App.pop = k; };
-  document.querySelectorAll('#benchBar button').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); show(App.pop === b.dataset.p ? null : b.dataset.p); }));
+  const pop = $('#benchPop'); const show = k => { pop.classList.toggle('open', !!k); pop.querySelectorAll(':scope > div').forEach(d => { d.style.display = d.dataset.p === k ? '' : 'none'; }); document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.classList.toggle('pri', b.dataset.p === k)); App.pop = k; };
+  document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); show(App.pop === b.dataset.p ? null : b.dataset.p); }));
   /* fenêtre déplaçable (par son titre) : on peut la ranger sur le côté pour garder l'écran visible */
   let drag = null;
   pop.addEventListener('pointerdown', e => { const h = e.target.closest('h3'); if (!h) return; const box = h.closest('#benchPop > div'); drag = { box, x: e.clientX, y: e.clientY, l: box.offsetLeft, t: box.offsetTop }; h.setPointerCapture(e.pointerId); h.style.cursor = 'grabbing'; });
   pop.addEventListener('pointermove', e => { if (!drag) return; drag.box.style.left = (drag.l + e.clientX - drag.x) + 'px'; drag.box.style.top = (drag.t + e.clientY - drag.y) + 'px'; });
   pop.addEventListener('pointerup', () => { drag = null; });
+  document.querySelector('#benchBar button[data-a=lessons]').addEventListener('click', e => { e.stopPropagation(); show(null); App.tpui.lessons(); document.getElementById('side').scrollTop = 0; });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') show(null); });
   show(null);
   App.tpui = new OL.TPUI($('#tpPane'), App);
