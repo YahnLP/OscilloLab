@@ -20,7 +20,7 @@ OL.RigolUI = function (root, S) {
   /* touches programmables */
   const sk = [];
   const mkSoft = (side, i) => {
-    const x = side === 'l' ? 28 : 676, y = 82 + i * 44;
+    const x = side === 'l' ? 28 : 676, y = 100 + i * 39.75;
     return OL.Key(box, { x, y, w: 46, h: 30, label: '', cls: 'rkey ' + (side === 'l' ? 'soft' : 'softr'), on: () => (side === 'l' ? pressQM(i) : pressSoft(i)) });
   };
   const rs = [], ls = [];
@@ -251,8 +251,8 @@ OL.RigolUI = function (root, S) {
   };
   function drawQM(c) {
     if (U.qm === null) return; const keys = (U.qm === 0 ? OL.RIGOL_H : OL.RIGOL_V).slice((U.qmPage || 0) * 6, (U.qmPage || 0) * 6 + 6);
-    OL.text(c, U.qm === 0 ? 'Horizontal' : 'Vertical', 40, 62, { size: 12, align: 'center', color: '#fff' });
-    keys.forEach((k, i) => { const y = 76 + i * 56; OL.rrect(c, 8, y, 64, 50, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall').replace('Period Area', 'P.Area'), 40, y + 36, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(24, y + 8, 32, 18); });
+    OL.text(c, U.qm === 0 ? 'Horizontal' : 'Vertical', 40, 47, { size: 12, align: 'center', color: '#fff' });
+    keys.forEach((k, i) => { const y = 58 + i * 60; OL.rrect(c, 8, y, 64, 52, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall').replace('Period Area', 'P.Area'), 40, y + 38, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(24, y + 9, 32, 18); });
   }
   function drawCursors(c) {
     const cu = U.cur, dh = GR.h / 8, cy = GR.y + GR.h / 2, src = cu.src, lab = Math.abs(S.vdivLabel(src)), wd = GR.w / 12, pos = st.ch[src].pos;
@@ -287,12 +287,12 @@ OL.RigolUI = function (root, S) {
   function drawMenu(c) {
     if (!U.menu) return; const m = menus[U.menu]; if (!m) return; const items = m(), x0 = 702, w = 96;
     OL.rrect(c, x0 - 2, 38, w + 4, 402, 8, 'rgba(14,16,20,.97)', '#556', 1);
-    OL.text(c, U.menu === 'ch' ? 'CH' + (U.sel + 1) : ({ auto: 'Auto Setting', trig: 'Trigger', horiz: 'Horizontal', measure: 'Measure', acquire: 'Acquire', display: 'Display', cursor: 'Cursor', storage: 'Storage', utility: 'Utility', math: 'Math' })[U.menu], x0 + w / 2, 52, { size: 14, align: 'center', color: '#8cf', bold: true });
+    OL.text(c, U.menu === 'ch' ? 'CH' + (U.sel + 1) : ({ auto: 'Auto Setting', trig: 'Trigger', horiz: 'Horizontal', measure: 'Measure', acquire: 'Acquire', display: 'Display', cursor: 'Cursor', storage: 'Storage', utility: 'Utility', math: 'Math' })[U.menu], x0 + w / 2, 47, { size: 14, align: 'center', color: '#8cf', bold: true });
     for (let i = 0; i < 6; i++) {
-      const idx = U.page * 6 + i, it = items[idx]; if (!it) continue; const y = 64 + i * 62, sel = U.sel2 === idx;
-      const g = c.createLinearGradient(0, y, 0, y + 56); g.addColorStop(0, sel ? '#33557a' : '#2a2d33'); g.addColorStop(1, sel ? '#1a3352' : '#17191d');
-      OL.rrect(c, x0 + 2, y, w - 4, 56, 5, g, sel ? '#7cf' : '#555', 1);
-      OL.text(c, it.label, x0 + w / 2, y + 16, { size: 14, align: 'center' });
+      const idx = U.page * 6 + i, it = items[idx]; if (!it) continue; const y = 57 + i * 60, sel = U.sel2 === idx;
+      const g = c.createLinearGradient(0, y, 0, y + 54); g.addColorStop(0, sel ? '#33557a' : '#2a2d33'); g.addColorStop(1, sel ? '#1a3352' : '#17191d');
+      OL.rrect(c, x0 + 2, y, w - 4, 54, 5, g, sel ? '#7cf' : '#555', 1);
+      OL.text(c, it.label, x0 + w / 2, y + 15, { size: 14, align: 'center' });
       const v = typeof it.val === 'function' ? it.val() : ''; if (v) { OL.rrect(c, x0 + 8, y + 28, w - 16, 22, 3, 'rgba(0,0,0,.55)', sel ? '#7cf' : '#444', 1); OL.text(c, v, x0 + w / 2, y + 39, { size: 13, align: 'center', color: '#8df' }); }
     }
     if (U.drop) { const d = U.drop, n = d.opts.length, show = Math.min(7, n), top = Math.max(0, Math.min(n - show, d.idx - 3)); OL.rrect(c, 580, 80, 118, show * 28 + 10, 5, '#10141a', '#7cf', 1);
