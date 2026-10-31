@@ -20,17 +20,17 @@ OL.RigolUI = function (root, S) {
   /* touches programmables */
   const sk = [];
   const mkSoft = (side, i) => {
-    const x = side === 'l' ? 28 : 676, y = 100 + i * 39.75;
-    return OL.Key(box, { x, y, w: 46, h: 30, label: '', cls: 'rkey ' + (side === 'l' ? 'soft' : 'softr'), on: () => (side === 'l' ? pressQM(i) : pressSoft(i)) });
+    const x = side === 'l' ? 20 : 670, y = 100 + i * 39.75;
+    return OL.Key(box, { x, y, w: 44, h: 30, label: '', cls: 'rkey ' + (side === 'l' ? 'soft' : 'softr'), on: () => (side === 'l' ? pressQM(i) : pressSoft(i)) });
   };
   const rs = [], ls = [];
   for (let i = 0; i < 6; i++) { ls.push(mkSoft('l', i)); rs.push(mkSoft('r', i)); }
-  OL.Key(box, { x: 28, y: 40, w: 46, h: 30, label: 'MENU', cls: 'rkey arrow', on: () => { U.qm = U.qm === null ? 0 : (U.qm === 0 ? 1 : null); U.qmPage = 0; } });
-  OL.Key(box, { x: 676, y: 40, w: 46, h: 30, label: '▲', cls: 'rkey arrow', on: () => { U.page = Math.max(0, U.page - 1); } });
-  OL.Key(box, { x: 676, y: 340, w: 46, h: 30, label: '▼', cls: 'rkey arrow', on: () => { U.page = U.page + 1; } });
+  OL.Key(box, { x: 20, y: 40, w: 44, h: 30, label: 'MENU', cls: 'rkey arrow', on: () => { U.qm = U.qm === null ? 0 : (U.qm === 0 ? 1 : null); U.qmPage = 0; } });
+  OL.Key(box, { x: 670, y: 40, w: 44, h: 30, label: '▲', cls: 'rkey arrow', on: () => { U.page = Math.max(0, U.page - 1); } });
+  OL.Key(box, { x: 670, y: 340, w: 44, h: 30, label: '▼', cls: 'rkey arrow', on: () => { U.page = U.page + 1; } });
   const qmN = () => Math.ceil((U.qm === 1 ? OL.RIGOL_V : OL.RIGOL_H).length / 6);
-  OL.Key(box, { x: 28, y: 340, w: 46, h: 20, label: '▲', cls: 'rkey arrow', on: () => { U.qmPage = Math.max(0, (U.qmPage || 0) - 1); } });
-  OL.Key(box, { x: 28, y: 364, w: 46, h: 20, label: '▼', cls: 'rkey arrow', on: () => { U.qmPage = Math.min(qmN() - 1, (U.qmPage || 0) + 1); } });
+  OL.Key(box, { x: 20, y: 340, w: 44, h: 20, label: '▲', cls: 'rkey arrow', on: () => { U.qmPage = Math.max(0, (U.qmPage || 0) - 1); } });
+  OL.Key(box, { x: 20, y: 364, w: 44, h: 20, label: '▼', cls: 'rkey arrow', on: () => { U.qmPage = Math.min(qmN() - 1, (U.qmPage || 0) + 1); } });
 
   const K = (x, y, w, h, label, cls, fn) => OL.Key(box, { x, y, w, h, label, cls: 'rkey ' + cls, on: fn });
   /* rangée du haut */
