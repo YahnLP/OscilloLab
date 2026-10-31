@@ -100,3 +100,11 @@ kbd { background:#26364a; border-radius:4px; padding:0 5px; border:1px solid #3b
   main > div:first-child { position: sticky; top: 0; align-self: start; }
   #side { height: calc(100vh - 76px); overflow-y: auto; padding-right: 6px; }
 }
+
+/* menus de la paillasse au-dessus de l'oscilloscope */
+#benchBar { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+#benchPop { position:relative; height:0; z-index:20; }
+#benchPop > div { position:absolute; left:0; top:0; width:440px; max-width:96vw; max-height:calc(100vh - 150px); overflow-y:auto; box-shadow:0 12px 30px #000c; border-radius:10px; }
+#benchPop > div .card { margin:0; border-color:#37a0ff; }
+#benchPop h3 { cursor:grab; user-select:none; touch-action:none; }
+#benchPop .seg { flex-wrap:wrap; } #benchPop .seg button { padding:6px 9px; font-size:13px; }

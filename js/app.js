@@ -22,14 +22,13 @@ App.build = function (dev, tp, seed) {
   else { wiring.ch[0].node = { src: App.bench.comp, key: 'out' }; st.ch[0].probe = 10; st.ch[0].vIdx = OL.nearest(P.vdivs, 0.1); }
   document.body.className = 'body-' + dev;
   document.querySelectorAll('#devSeg button').forEach(b => b.classList.toggle('on', b.dataset.d === dev));
-  const bp = $('#benchPane'); bp.innerHTML = '';
-  App.benchUI = new OL.Bench(bp, App, tp && tp.only ? { only: tp.only } : {});
+  App.benchUI = new OL.Bench($('#benchPop'), App, tp && tp.only ? { only: tp.only } : {});
   App.fit();
 };
 App.startTP = function (tp, seed) { App.build(App.dev, tp, seed); };
 App.free = function (keepList) { App.build(App.dev, null, 1); if (!keepList) App.tpui.list(); };
 App.fit = function () {
-  if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw, g.innerWidth > 1250 ? (g.innerHeight - 90) / bh : 9);
+  if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw, g.innerWidth > 1250 ? (g.innerHeight - 140) / bh : 9);
   $('#scopeBox').style.transform = 'scale(' + k + ')'; $('#scopeWrap').style.height = (bh * k) + 'px';
 };
 /* suivi de ce que l'élève a fait (pour la correction automatique) */
@@ -47,6 +46,15 @@ function loop(now) {
 g.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('#devSeg button').forEach(b => b.addEventListener('click', () => { App.build(b.dataset.d, App.tp, App.seed); if (App.tp) App.tpui.render(); }));
   g.addEventListener('resize', () => App.fit());
+  const pop = $('#benchPop'); const show = k => { pop.classList.toggle('open', !!k); pop.querySelectorAll(':scope > div').forEach(d => { d.style.display = d.dataset.p === k ? '' : 'none'; }); document.querySelectorAll('#benchBar button').forEach(b => b.classList.toggle('pri', b.dataset.p === k)); App.pop = k; };
+  document.querySelectorAll('#benchBar button').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); show(App.pop === b.dataset.p ? null : b.dataset.p); }));
+  /* fenêtre déplaçable (par son titre) : on peut la ranger sur le côté pour garder l'écran visible */
+  let drag = null;
+  pop.addEventListener('pointerdown', e => { const h = e.target.closest('h3'); if (!h) return; const box = h.closest('#benchPop > div'); drag = { box, x: e.clientX, y: e.clientY, l: box.offsetLeft, t: box.offsetTop }; h.setPointerCapture(e.pointerId); h.style.cursor = 'grabbing'; });
+  pop.addEventListener('pointermove', e => { if (!drag) return; drag.box.style.left = (drag.l + e.clientX - drag.x) + 'px'; drag.box.style.top = (drag.t + e.clientY - drag.y) + 'px'; });
+  pop.addEventListener('pointerup', () => { drag = null; });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') show(null); });
+  show(null);
   App.tpui = new OL.TPUI($('#tpPane'), App);
   App.build('owon', null, 1); requestAnimationFrame(loop);
 });

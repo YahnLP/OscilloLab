@@ -21,7 +21,7 @@ OL.numField = numField;
 
 OL.Bench = function (parent, App, opts) {
   const B = this; opts = opts || {}; B.App = App;
-  B.root = E('div', '', parent);
+  B.root = parent; B.pw = parent.querySelector('[data-p=wire]'); B.pg = parent.querySelector('[data-p=gbf]'); B.pm = parent.querySelector('[data-p=mont]');
   B.refreshers = [];
   /* options de branchement */
   B.nodeList = () => {
@@ -40,8 +40,8 @@ OL.Bench = function (parent, App, opts) {
 };
 OL.Bench.prototype.build = function () {
   const B = this, App = B.App, P = App.scope.P, W = App.scope.bench;
-  B.root.innerHTML = '';
-  const c1 = E('div', 'card', B.root); E('h3', '', c1, null, 'Branchements des sondes');
+  B.pw.innerHTML = ''; B.pg.innerHTML = ''; B.pm.innerHTML = '';
+  const c1 = E('div', 'card', B.pw); E('h3', '', c1, null, '⠿ '+'Branchements des sondes' + ' <span class="hint" style="float:right">déplaçable · Échap pour fermer</span>');
   for (let i = 0; i < P.nch; i++) {
     const row = E('div', 'row', c1); const lab = E('label', '', row, null, '<span class="chdot" style="background:' + App.ui.colors[i] + '"></span>' + P.chNames[i]);
     const sel = E('select', '', row); B.nodeList().forEach(([v, t]) => { const o = E('option', '', sel, null, t); o.value = v; });
@@ -56,7 +56,7 @@ OL.Bench.prototype.build = function () {
     upd(); B.refreshers.push(() => { sel.value = W.ch[i].node ? W.ch[i].node.src.kind + '.' + W.ch[i].node.key : ''; upd(); gc.checked = W.ch[i].ground !== false; sl.value = W.ch[i].trim; });
   }
   E('div', 'hint', c1, null, 'L\'interrupteur de la sonde (×1 / ×10) et le réglage « Probe » du menu de l\'oscilloscope doivent toujours être identiques.');
-  const c2 = E('div', 'card', B.root); E('h3', '', c2, null, 'Générateur de fonctions');
+  const c2 = E('div', 'card', B.pg); E('h3', '', c2, null, '⠿ '+'Générateur de fonctions' + ' <span class="hint" style="float:right">déplaçable · Échap pour fermer</span>');
   const gbf = App.bench.gbf, Hz = [['Hz', 1], ['kHz', 1e3], ['MHz', 1e6]], Vv = [['V', 1], ['mV', 1e-3]];
   const shp = E('div', 'row', c2); const sg = E('div', 'seg', shp);
   [['sine', '∿ Sinus'], ['square', '⊓ Carré'], ['triangle', '△ Triangle'], ['ramp', '◿ Rampe']].forEach(([k, t]) => { const b = E('button', '', sg, null, t); b.addEventListener('click', () => { gbf.shape = k; sync(); }); b.dataset.k = k; });
@@ -64,7 +64,7 @@ OL.Bench.prototype.build = function () {
   sync();
   const rows = [numField(c2, 'Fréquence', () => gbf.freq, v => { gbf.freq = Math.max(0.01, v); }, Hz), numField(c2, 'Amplitude (crête-crête)', () => gbf.amp, v => { gbf.amp = Math.max(0, v); }, Vv), numField(c2, 'Offset', () => gbf.offset, v => { gbf.offset = v; }, Vv), numField(c2, 'Rapport cyclique', () => gbf.duty * 100, v => { gbf.duty = Math.min(0.95, Math.max(0.05, v / 100)); }, [['%', 1]])];
   B.refreshers.push(() => { sync(); rows.forEach(r => r.refresh()); });
-  const c3 = E('div', 'card', B.root); E('h3', '', c3, null, 'Montages');
+  const c3 = E('div', 'card', B.pm); E('h3', '', c3, null, '⠿ '+'Montages' + ' <span class="hint" style="float:right">déplaçable · Échap pour fermer</span>');
   const mk = (title, f) => { const d = E('details', 'mont', c3); E('summary', '', d, null, title); const b = E('div', '', d); f(b); return d; };
   const bb = App.bench;
   const R = [['Ω', 1], ['kΩ', 1e3], ['MΩ', 1e6]], Cc = [['nF', 1e-9], ['µF', 1e-6], ['mF', 1e-3], ['pF', 1e-12]].sort((a, b) => a[1] - b[1]);

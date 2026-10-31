@@ -6,8 +6,10 @@
 <header class="top"><h1><b>Oscillo</b>Lab</h1>
 <div class="seg" id="devSeg"><button data-d="owon" class="on">OWON SDS5032E(V)</button><button data-d="rigol">RIGOL DS1104Z</button></div>
 <span id="tpName" style="color:#8fa0b3"></span></header>
-<main><div><div id="scopeWrap"><div id="scopeBox"></div></div></div>
-<aside id="side"><div id="tpPane"></div><div id="benchPane"></div></aside></main>
+<main><div><div id="benchBar"><button class="btn" data-p="wire">🔌 Branchements des sondes</button><button class="btn" data-p="gbf">〰 Générateur de fonctions</button><button class="btn" data-p="mont">🧩 Montages en entrée</button></div>
+<div id="benchPop"><div data-p="wire"></div><div data-p="gbf"></div><div data-p="mont"></div></div>
+<div id="scopeWrap"><div id="scopeBox"></div></div></div>
+<aside id="side"><div id="tpPane"></div></aside></main>
 <script src="js/util.js"></script><script src="js/signals.js"></script><script src="js/profiles.js"></script>
 <script src="js/scope.js"></script><script src="js/measure.js"></script><script src="js/autoset.js"></script>
 <script src="js/ui.js"></script><script src="js/draw.js"></script><script src="js/ui_owon.js"></script><script src="js/ui_rigol.js"></script>
