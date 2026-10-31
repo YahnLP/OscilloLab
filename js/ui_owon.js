@@ -28,8 +28,8 @@ OL.OwonUI = function (root, S) {
   /* touches H et F */
   const hk = [], fk = [];
   for (let i = 0; i < 5; i++) hk.push(OL.Key(box, { x: 241 + 54.7 * i, y: 421, w: 40, h: 22, label: 'H' + (i + 1), cls: 'round', on: () => pressH(i) }));
-  for (let i = 0; i < 5; i++) fk.push(OL.Key(box, { x: 556, y: 90 + i * 58 - 4, w: 38, h: 30, label: 'F' + (i + 1), cls: 'round', on: () => pressF(i) }));
-  OL.Key(box, { x: 556, y: 366, w: 38, h: 22, label: 'Menu<br>off', cls: 'round tiny', on: () => { U.menu = null; U.open = -1; } });
+  for (let i = 0; i < 5; i++) fk.push(OL.Key(box, { x: 556, y: 116 + i * 46, w: 38, h: 30, label: 'F' + (i + 1), cls: 'round', on: () => pressF(i) }));
+  OL.Key(box, { x: 556, y: 346, w: 38, h: 22, label: 'Menu<br>off', cls: 'round tiny', on: () => { U.menu = null; U.open = -1; } });
 
   /* panneau de commande */
   E('div', 'o-zone', box, { left: '603px', top: '4px', width: '326px', height: '478px' });
@@ -310,8 +310,8 @@ OL.OwonUI = function (root, S) {
     if (U.open >= 0 && items[U.open] && items[U.open].opts) {
       const it = items[U.open]; let opts = typeof it.opts === 'function' ? it.opts() : it.opts; let first = 0;
       if (opts.length > 5) { first = U.page * 4; const show = opts.slice(first, first + 4); show.push({ t: 'Page ' + (U.page + 1) + '/' + Math.ceil(opts.length / 4) + ' ▼' }); opts = show; first = 0; }
-      opts.forEach((o, k) => { const y = 53 + k * 97; const g = c.createLinearGradient(0, y, 0, y + 84); g.addColorStop(0, '#2a74c8'); g.addColorStop(1, '#0d3a78'); OL.rrect(c, 690, y, 108, 84, 6, g, '#aee', 1);
-        const t = typeof o.t === 'function' ? o.t() : o.t; const parts = String(t).split('<br>'); parts.forEach((p, q) => OL.text(c, p, 744, y + 42 + (q - (parts.length - 1) / 2) * 18, { size: 16, align: 'center' })); });
+      opts.forEach((o, k) => { const y = 115 + k * 77; const g = c.createLinearGradient(0, y, 0, y + 62); g.addColorStop(0, '#2a74c8'); g.addColorStop(1, '#0d3a78'); OL.rrect(c, 700, y, 92, 62, 6, g, '#aee', 1);
+        const t = typeof o.t === 'function' ? o.t() : o.t; const parts = String(t).split('<br>'); parts.forEach((p, q) => OL.text(c, p, 746, y + 31 + (q - (parts.length - 1) / 2) * 17, { size: 15, align: 'center' })); });
     }
   }
   /* repères des commandes (pour le bouton « Montre-moi » des TP) */
