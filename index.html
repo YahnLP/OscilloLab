@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OscilloLab — simulateur d'oscilloscopes OWON SDS5032E et RIGOL DS1104Z</title>
+<link rel="stylesheet" href="css/style.css">
+</head><body>
+<header class="top"><h1><b>Oscillo</b>Lab</h1>
+<div class="seg" id="devSeg"><button data-d="owon" class="on">OWON SDS5032E(V)</button><button data-d="rigol">RIGOL DS1104Z</button></div>
+<span id="tpName" style="color:#8fa0b3"></span></header>
+<main><div><div id="scopeWrap"><div id="scopeBox"></div></div></div>
+<aside id="side"><div id="tpPane"></div><div id="benchPane"></div></aside></main>
+<script src="js/util.js"></script><script src="js/signals.js"></script><script src="js/profiles.js"></script>
+<script src="js/scope.js"></script><script src="js/measure.js"></script><script src="js/autoset.js"></script>
+<script src="js/ui.js"></script><script src="js/draw.js"></script><script src="js/ui_owon.js"></script><script src="js/ui_rigol.js"></script>
+<script src="js/bench.js"></script><script src="js/tp.js"></script><script src="js/tps_a.js"></script><script src="js/tps_b.js"></script>
+<script src="js/app.js"></script>
+</body></html>

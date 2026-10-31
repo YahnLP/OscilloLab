@@ -1,0 +1,10 @@
+{
+  "name": "oscillolab",
+  "version": "1.0.0",
+  "description": "Simulateur hors ligne des oscilloscopes OWON SDS5032E(V) et RIGOL DS1104Z, avec TP corrigés automatiquement (Bac Pro CIEL).",
+  "private": true,
+  "scripts": {
+    "build": "node tools/build.js",
+    "test": "node tests/engine.test.js && node tools/build.js && node tests/ui.test.js dist/oscillolab.html"
+  }
+}
