@@ -29,7 +29,7 @@ App.build = function (dev, tp, seed) {
 App.startTP = function (tp, seed) { App.build(App.dev, tp, seed); };
 App.free = function (keepList) { App.build(App.dev, null, 1); if (!keepList) App.tpui.list(); };
 App.fit = function () {
-  if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw);
+  if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw, g.innerWidth > 1250 ? (g.innerHeight - 90) / bh : 9);
   $('#scopeBox').style.transform = 'scale(' + k + ')'; $('#scopeWrap').style.height = (bh * k) + 'px';
 };
 /* suivi de ce que l'élève a fait (pour la correction automatique) */

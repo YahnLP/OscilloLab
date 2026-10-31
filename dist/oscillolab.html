@@ -98,6 +98,13 @@ details.mont { border:1px solid #243040; border-radius:8px; margin:6px 0; paddin
 kbd { background:#26364a; border-radius:4px; padding:0 5px; border:1px solid #3b5170; font-size:12px; }
 .score { font-size:15px; }
 
+/* l'oscilloscope reste à l'écran ; seul le panneau de droite défile */
+@media (min-width: 1251px) {
+  main { height: calc(100vh - 52px); overflow: hidden; align-items: start; }
+  main > div:first-child { position: sticky; top: 0; align-self: start; }
+  #side { height: calc(100vh - 76px); overflow-y: auto; padding-right: 6px; }
+}
+
 </style>
 </head><body>
 <header class="top"><h1><b>Oscillo</b>Lab</h1>
@@ -1946,7 +1953,7 @@ App.build = function (dev, tp, seed) {
 App.startTP = function (tp, seed) { App.build(App.dev, tp, seed); };
 App.free = function (keepList) { App.build(App.dev, null, 1); if (!keepList) App.tpui.list(); };
 App.fit = function () {
-  if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw);
+  if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw, g.innerWidth > 1250 ? (g.innerHeight - 90) / bh : 9);
   $('#scopeBox').style.transform = 'scale(' + k + ')'; $('#scopeWrap').style.height = (bh * k) + 'px';
 };
 /* suivi de ce que l'élève a fait (pour la correction automatique) */
