@@ -120,13 +120,23 @@ OL.RigolUI = function (root, S) {
     { label: 'Probe', val: () => c.probe + 'X', opts: P.probes.map(k => opt(k + 'X', () => { c.probe = k; S.resetAvg(); })) },
     { label: 'Invert', val: () => c.inv ? 'ON' : 'OFF', opts: [opt('OFF', () => { c.inv = false; }), opt('ON', () => { c.inv = true; })] },
     { label: 'Volts/Div', val: () => c.fineMode ? 'Fine' : 'Coarse', opts: [opt('Coarse', () => { c.fineMode = false; c.fk = 0; }), opt('Fine', () => { c.fineMode = true; })] }]; };
-  menus.trig = () => { const t = st.trig; return [
-    { label: 'Type', val: () => 'Edge', opts: ['Edge', 'Pulse', 'Slope', 'Video', 'Pattern', 'Duration', 'TimeOut', 'Runt', 'Window', 'Delay', 'Setup/Hold', 'Nth Edge', 'RS232', 'I2C', 'SPI'].map(n => opt(n, () => { if (n !== 'Edge') msg('Non simulé : seul le déclenchement sur front (Edge) est disponible'); })) },
+  const TYPES = [['edge', 'Edge'], ['rs232', 'RS232'], ['i2c', 'I2C'], ['spi', 'SPI']];
+  const chOpts = (get, set, off) => (off ? [opt('OFF', () => set(null))] : []).concat(P.chNames.map((n, k) => opt(n, () => set(k))));
+  const thrItem = (label, o, key) => ({ label, val: () => OL.fmt(o[key], 'V', 3).replace(',', '.'), knob: n => { o[key] = Math.round((o[key] + n * 0.1) * 100) / 100; }, push: () => { o[key] = 0; } });
+  menus.trig = () => {
+    const t = st.trig, pr = t.pr;
+    const typeItem = { label: 'Type', val: () => (TYPES.find(x => x[0] === t.type) || ['', 'Edge'])[1], opts: TYPES.map(([id, n]) => opt(n, () => { t.type = id; })).concat(['Pulse', 'Slope', 'Video', 'Pattern', 'Duration', 'TimeOut', 'Runt', 'Window', 'Delay', 'Setup/Hold', 'Nth Edge'].map(n => opt(n, () => msg('Type de déclenchement non simulé : seuls Edge, RS232, I2C et SPI sont disponibles')))) };
+    const sweep = { label: 'Sweep', val: () => ({ auto: 'Auto', normal: 'Normal', single: 'Single' })[t.mode], opts: [opt('Auto', () => { t.mode = 'auto'; }), opt('Normal', () => { t.mode = 'normal'; }), opt('Single', () => { t.mode = 'single'; S.arm(); })] };
+    if (t.type === 'rs232') return [typeItem, { label: 'Source', val: () => P.chNames[pr.src], opts: chOpts(() => pr.src, k => { pr.src = k; }) }, { label: 'Polarity', val: () => pr.pol === 'normal' ? 'Normal' : 'Invert', opts: [opt('Normal', () => { pr.pol = 'normal'; }), opt('Invert', () => { pr.pol = 'invert'; })] }, { label: 'When', val: () => 'Start', opts: [opt('Start', () => { })] }, { label: 'Baud', val: () => String(pr.baud), opts: [2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => opt(String(b), () => { pr.baud = b; })) }, sweep, { label: 'Level', val: () => OL.fmt(t.level, 'V', 3).replace(',', '.'), knob: n => level(n), push: () => level0() }];
+    if (t.type === 'i2c') return [typeItem, { label: 'SCL', val: () => P.chNames[pr.scl], opts: chOpts(() => pr.scl, k => { pr.scl = k; }) }, { label: 'SDA', val: () => P.chNames[pr.sda], opts: chOpts(() => pr.sda, k => { pr.sda = k; }) }, { label: 'When', val: () => pr.when === 'start' ? 'Start' : 'Stop', opts: [opt('Start', () => { pr.when = 'start'; }), opt('Stop', () => { pr.when = 'stop'; })] }, sweep, { label: 'Level', val: () => OL.fmt(t.level, 'V', 3).replace(',', '.'), knob: n => level(n), push: () => level0() }];
+    if (t.type === 'spi') return [typeItem, { label: 'CS', val: () => P.chNames[pr.cs], opts: chOpts(() => pr.cs, k => { pr.cs = k; }) }, { label: 'CS Polarity', val: () => pr.csHigh ? 'High' : 'Low', opts: [opt('Low', () => { pr.csHigh = false; }), opt('High', () => { pr.csHigh = true; })] }, sweep, { label: 'Level', val: () => OL.fmt(t.level, 'V', 3).replace(',', '.'), knob: n => level(n), push: () => level0() }];
+    return [typeItem,
     { label: 'Source', val: () => t.src === 'line' ? 'AC Line' : P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })).concat([opt('AC Line', () => { t.src = 'line'; })]) },
     { label: 'Slope', val: () => t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', opts: [opt('↗ Rising', () => { t.slope = 'rise'; }), opt('↘ Falling', () => { t.slope = 'fall'; }), opt('↗↘ Both', () => { t.slope = 'both'; })] },
-    { label: 'Sweep', val: () => ({ auto: 'Auto', normal: 'Normal', single: 'Single' })[t.mode], opts: [opt('Auto', () => { t.mode = 'auto'; }), opt('Normal', () => { t.mode = 'normal'; }), opt('Single', () => { t.mode = 'single'; S.arm(); })] },
+    sweep,
     { label: 'Coupling', val: () => ({ dc: 'DC', ac: 'AC', hf: 'HF Reject', lf: 'LF Reject' })[t.coup], opts: [opt('DC', () => { t.coup = 'dc'; }), opt('AC', () => { t.coup = 'ac'; }), opt('LF Reject', () => { t.coup = 'lf'; }), opt('HF Reject', () => { t.coup = 'hf'; })] },
-    { label: 'Holdoff', val: () => OL.fmt(t.holdoff, 's'), knob: n => { t.holdoff = Math.max(100e-9, Math.min(10, t.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); }, push: () => { t.holdoff = 100e-9; } }]; };
+    { label: 'Holdoff', val: () => OL.fmt(t.holdoff, 's'), knob: n => { t.holdoff = Math.max(100e-9, Math.min(10, t.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); }, push: () => { t.holdoff = 100e-9; } }];
+  };
   const PAIRS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
   menus.horiz = () => [
     { label: 'Time Base', val: () => st.xy ? 'XY' : st.roll ? 'Roll' : 'YT', opts: [opt('YT', () => { st.xy = false; st.roll = false; }), opt('XY', () => { st.xy = true; st.roll = false; }), opt('Roll', () => { st.xy = false; st.roll = true; if (S.tdiv() < 0.2) st.tdivIdx = OL.nearest(P.tdivs, 0.2); })] },
@@ -176,8 +186,80 @@ OL.RigolUI = function (root, S) {
   menus.utility = () => [
     { label: 'System', val: () => '▼', opts: [opt('Self-Cal', () => { U.selfcal = performance.now(); })] },
     { label: 'Language', val: () => 'Français', opts: [opt('Français', () => { })] }];
-  menus.math = () => [
+  const mathMenu0 = () => [
     { label: 'Operate', val: () => ({ 'a+b': 'A+B', 'a-b': 'A-B', 'a*b': 'A×B', 'a/b': 'A/B' })[st.math.op] + (st.math.on ? '' : ' (OFF)'), opts: [opt('A+B', () => { st.math.op = 'a+b'; st.math.on = true; }), opt('A-B', () => { st.math.op = 'a-b'; st.math.on = true; }), opt('A×B', () => { st.math.op = 'a*b'; st.math.on = true; }), opt('A/B', () => { st.math.op = 'a/b'; st.math.on = true; }), opt('OFF', () => { st.math.on = false; })] }];
+  /* ----- décodeurs série (option SA-DS1000Z) : MATH → Decode1 / Decode2 ----- */
+  U.mathTab = 'math';
+  const decDef = () => ({ on: false, type: 'rs232', bus: true, table: false, fmt: 'hex',
+    rs: { tx: 0, rx: null, thrTx: 0, thrRx: 0, pol: 'normal', endian: 'lsb', baud: 9600, dataBits: 8, stop: 1, parity: 'none' },
+    ic: { scl: 0, sda: 1, thrScl: 0, thrSda: 0, addr: 'normal' },
+    sp: { mode: 'cs', clk: 0, mosi: 1, miso: null, cs: 2, thrClk: 0, thrMosi: 0, thrMiso: 0, thrCs: 0, csHigh: false, edge: 'rise', dataBits: 8, endian: 'msb' } });
+  U.dec = [decDef(), decDef()];
+  const FMT = [['hex', 'Hex'], ['ascii', 'ASCII'], ['dec', 'Decimal'], ['bin', 'Binary']];
+  const decItems = d => {
+    const o = d.type === 'rs232' ? d.rs : d.type === 'i2c' ? d.ic : d.sp, L = [];
+    L.push({ label: 'Decode', val: () => d.on ? 'ON' : 'OFF', opts: [opt('OFF', () => { d.on = false; }), opt('ON', () => { d.on = true; })] });
+    L.push({ label: 'Decoder', val: () => ({ rs232: 'RS232', i2c: 'I2C', spi: 'SPI' })[d.type], opts: [opt('RS232', () => { d.type = 'rs232'; }), opt('I2C', () => { d.type = 'i2c'; }), opt('SPI', () => { d.type = 'spi'; })] });
+    if (d.type === 'rs232') {
+      L.push({ label: 'TX', val: () => o.tx === null ? 'OFF' : P.chNames[o.tx], opts: chOpts(() => o.tx, k => { o.tx = k; }, true) });
+      L.push({ label: 'RX', val: () => o.rx === null ? 'OFF' : P.chNames[o.rx], opts: chOpts(() => o.rx, k => { o.rx = k; }, true) });
+      L.push({ label: 'Polarity', val: () => o.pol === 'normal' ? 'Normal' : 'Invert', opts: [opt('Normal', () => { o.pol = 'normal'; }), opt('Invert', () => { o.pol = 'invert'; })] });
+      L.push({ label: 'Endian', val: () => o.endian === 'lsb' ? 'LSB' : 'MSB', opts: [opt('LSB', () => { o.endian = 'lsb'; }), opt('MSB', () => { o.endian = 'msb'; })] });
+      L.push({ label: 'Baud', val: () => String(o.baud), opts: [2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => opt(String(b), () => { o.baud = b; })) });
+      L.push({ label: 'Data Bits', val: () => String(o.dataBits), opts: [5, 6, 7, 8, 9].map(n => opt(String(n), () => { o.dataBits = n; })) });
+      L.push({ label: 'Stop Bit', val: () => String(o.stop), opts: [opt('1', () => { o.stop = 1; }), opt('1.5', () => { o.stop = 1.5; }), opt('2', () => { o.stop = 2; })] });
+      L.push({ label: 'Parity', val: () => ({ none: 'None', odd: 'Odd', even: 'Even' })[o.parity], opts: [opt('None', () => { o.parity = 'none'; }), opt('Odd', () => { o.parity = 'odd'; }), opt('Even', () => { o.parity = 'even'; })] });
+      L.push(thrItem('TX Threshold', o, 'thrTx')); L.push(thrItem('RX Threshold', o, 'thrRx'));
+    } else if (d.type === 'i2c') {
+      L.push({ label: 'SCL', val: () => P.chNames[o.scl], opts: chOpts(() => o.scl, k => { o.scl = k; }) });
+      L.push({ label: 'SDA', val: () => P.chNames[o.sda], opts: chOpts(() => o.sda, k => { o.sda = k; }) });
+      L.push(thrItem('SCL Threshold', o, 'thrScl')); L.push(thrItem('SDA Threshold', o, 'thrSda'));
+      L.push({ label: 'Address', val: () => o.addr === 'normal' ? 'Normal' : 'R/W', opts: [opt('Normal', () => { o.addr = 'normal'; }), opt('R/W', () => { o.addr = 'rw'; })] });
+    } else {
+      L.push({ label: 'Mode', val: () => o.mode === 'cs' ? 'CS' : 'Timeout', opts: [opt('CS', () => { o.mode = 'cs'; }), opt('Timeout', () => msg('Mode Timeout : non simulé'))] });
+      L.push({ label: 'SCLK', val: () => P.chNames[o.clk], opts: chOpts(() => o.clk, k => { o.clk = k; }) });
+      L.push({ label: 'MOSI', val: () => o.mosi === null ? 'OFF' : P.chNames[o.mosi], opts: chOpts(() => o.mosi, k => { o.mosi = k; }, true) });
+      L.push({ label: 'MISO', val: () => o.miso === null ? 'OFF' : P.chNames[o.miso], opts: chOpts(() => o.miso, k => { o.miso = k; }, true) });
+      L.push({ label: 'CS', val: () => P.chNames[o.cs], opts: chOpts(() => o.cs, k => { o.cs = k; }) });
+      L.push({ label: 'CS Polarity', val: () => o.csHigh ? 'High' : 'Low', opts: [opt('Low', () => { o.csHigh = false; }), opt('High', () => { o.csHigh = true; })] });
+      L.push({ label: 'SCLK Slope', val: () => o.edge === 'rise' ? '↗' : '↘', opts: [opt('↗ Rising', () => { o.edge = 'rise'; }), opt('↘ Falling', () => { o.edge = 'fall'; })] });
+      L.push({ label: 'Data Bits', val: () => String(o.dataBits), opts: [4, 6, 8, 10, 12, 16, 24, 32].map(n => opt(String(n), () => { o.dataBits = n; })) });
+      L.push({ label: 'Endian', val: () => o.endian === 'msb' ? 'MSB' : 'LSB', opts: [opt('MSB', () => { o.endian = 'msb'; }), opt('LSB', () => { o.endian = 'lsb'; })] });
+      L.push(thrItem('SCLK Thr.', o, 'thrClk')); L.push(thrItem('MOSI Thr.', o, 'thrMosi')); L.push(thrItem('MISO Thr.', o, 'thrMiso')); L.push(thrItem('CS Thr.', o, 'thrCs'));
+    }
+    L.push({ label: 'Format', val: () => (FMT.find(x => x[0] === d.fmt) || FMT[0])[1], opts: FMT.map(([id, n]) => opt(n, () => { d.fmt = id; })) });
+    L.push({ label: 'BusStatus', val: () => d.bus ? 'ON' : 'OFF', opts: [opt('OFF', () => { d.bus = false; d.table = false; }), opt('ON', () => { d.bus = true; })] });
+    L.push({ label: 'Event Table', val: () => d.table ? 'ON' : 'OFF', opts: [opt('OFF', () => { d.table = false; }), opt('ON', () => { if (d.bus) d.table = true; else msg('Activez d\'abord BusStatus'); })] });
+    return L;
+  };
+  menus.math = () => {
+    const tab = { label: 'Fonction', val: () => ({ math: 'Math', dec1: 'Decode1', dec2: 'Decode2' })[U.mathTab], opts: [opt('Math', () => { U.mathTab = 'math'; U.page = 0; }), opt('Decode1', () => { U.mathTab = 'dec1'; U.page = 0; }), opt('Decode2', () => { U.mathTab = 'dec2'; U.page = 0; })] };
+    return U.mathTab === 'math' ? [tab].concat(mathMenu0()) : [tab].concat(decItems(U.dec[U.mathTab === 'dec1' ? 0 : 1]));
+  };
+  /* décodage des données affichées ; renvoie la liste d'événements de chaque décodeur actif */
+  U.runDecoders = function () {
+    const out = [], dt = S.window() / 1200;
+    U.dec.forEach((d, idx) => {
+      if (!d.on) { out.push(null); return; }
+      const v = i => (i === null || i === undefined || !st.ch[i] || !st.ch[i].on) ? null : S.volts(i);
+      let ev = [];
+      if (d.type === 'rs232') { const o = d.rs; const eT = o.tx === null ? [] : OL.decodeUART(v(o.tx), dt, { thr: o.thrTx, baud: o.baud, invert: o.pol === 'invert', endian: o.endian, dataBits: o.dataBits, parity: o.parity, stop: o.stop }).map(e => Object.assign(e, { line: 'TX' })), eR = o.rx === null ? [] : OL.decodeUART(v(o.rx), dt, { thr: o.thrRx, baud: o.baud, invert: o.pol === 'invert', endian: o.endian, dataBits: o.dataBits, parity: o.parity, stop: o.stop }).map(e => Object.assign(e, { line: 'RX' })); ev = eT.concat(eR).sort((a, b) => a.t0 - b.t0); }
+      else if (d.type === 'i2c') { const o = d.ic; ev = OL.decodeI2C(v(o.scl), v(o.sda), dt, { thrScl: o.thrScl, thrSda: o.thrSda }); }
+      else { const o = d.sp; ev = OL.decodeSPI(v(o.clk), v(o.mosi), v(o.miso), v(o.cs), dt, { thrClk: o.thrClk, thrMosi: o.thrMosi, thrMiso: o.thrMiso, thrCs: o.thrCs, csHigh: o.csHigh, edge: o.edge, dataBits: o.dataBits, endian: o.endian }); }
+      out.push(ev);
+    });
+    return out;
+  };
+  const evText = (d, e) => {
+    if (e.kind === 'start' || e.kind === 'restart' || e.kind === 'stop') return e.text;
+    if (e.kind === 'err' && e.val === undefined) return '?';
+    if (d.type === 'i2c' && e.kind === 'addr') return (d.ic.addr === 'rw' ? OL.fmtVal((e.val << 1) | e.rw, d.fmt === 'ascii' ? 'hex' : d.fmt, 8) : OL.fmtVal(e.val, d.fmt === 'ascii' ? 'hex' : d.fmt, 7)) + (e.rw ? ' R' : ' W') + (e.ack ? '' : ' ✗');
+    if (d.type === 'i2c') return OL.fmtVal(e.val, d.fmt, 8) + (e.ack ? '' : ' ✗');
+    if (d.type === 'spi') return OL.fmtVal(e.val, d.fmt, e.bits) + (e.valMiso !== null && e.valMiso !== undefined ? '/' + OL.fmtVal(e.valMiso, d.fmt, e.bits) : '');
+    return OL.fmtVal(e.val, d.fmt, e.bits);
+  };
+  U.evText = evText;
+
   const norm = s => String(s).toLowerCase().replace(/[^a-z0-9%]/g, '');
   function pressSoft(i) {
     const m = menus[U.menu]; if (!m) return; const items = m(); const idx = U.page * 6 + i; const it = items[idx]; if (!it) return;
@@ -213,7 +295,7 @@ OL.RigolUI = function (root, S) {
     const dp = sc.sampleRate() * sc.window(); OL.text(c, dp >= 1e6 ? (dp / 1e6).toFixed(1) + 'Mpts' : (dp / 1e3).toFixed(1) + 'kpts', 257, 26, { size: 11, align: 'center' });
     c.strokeStyle = '#aaa'; c.strokeRect(304.5, 8.5, 190, 16); c.fillStyle = '#333'; c.fillRect(306, 10, 187, 13); c.fillStyle = '#f90'; c.fillRect(398 - st.hdelay / S.window() * 20, 9, 7, 8);
     OL.rrect(c, 520, 6, 140, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'D', 528, 18, { size: 13, bold: true, color: '#f90' }); OL.text(c, OL.fmt(-st.hdelay, 's', 4).replace(',', '.').replace('µ', 'u'), 652, 18, { size: 14, align: 'right' });
-    const t = st.trig; OL.rrect(c, 676, 6, 120, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'T', 684, 18, { size: 13, bold: true }); OL.text(c, t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', 702, 18, { size: 13, color: '#fc0' });
+    const t = st.trig; OL.rrect(c, 676, 6, 120, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'T', 684, 18, { size: 13, bold: true }); if (t.type !== 'edge') OL.text(c, ({ rs232: 'RS232', i2c: 'I2C', spi: 'SPI' })[t.type], 700, 18, { size: 12, color: '#fc0', bold: true }); else OL.text(c, t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', 702, 18, { size: 13, color: '#fc0' });
     if (t.src === 'line') OL.text(c, 'AC', 722, 18, { size: 12, color: '#fc0', bold: true }); else { c.fillStyle = cols[t.src]; c.fillRect(716, 12, 11, 12); OL.text(c, String(t.src + 1), 721, 18, { size: 10, color: '#000', align: 'center', bold: true }); }
     if (t.src !== 'line') OL.text(c, OL.fmt(t.level, 'V', 3).replace(',', '.').replace(' ', ''), 790, 18, { size: 13, align: 'right', color: '#fc0' });
     /* graticule */
@@ -236,6 +318,7 @@ OL.RigolUI = function (root, S) {
     const tx = GR.x + GR.w / 2 - st.hdelay / S.window() * GR.w; if (tx > GR.x && tx < GR.x + GR.w) { c.fillStyle = '#f90'; c.beginPath(); c.moveTo(tx - 6, GR.y - 8); c.lineTo(tx + 6, GR.y - 8); c.lineTo(tx, GR.y); c.closePath(); c.fill(); }
     if (U.cur.mode !== 'off') drawCursors(c);
     drawAll(c);
+    drawBus(c);
     drawMeas(c);
     /* barre des voies */
     for (let i = 0; i < 4; i++) {
@@ -272,6 +355,31 @@ OL.RigolUI = function (root, S) {
       const y1 = (cu.a - pos) * lab, y2 = (cu.b - pos) * lab; box(3, ['AY: ' + f(y1, 'V'), 'BY: ' + f(y2, 'V'), 'ΔY: ' + f(Math.abs(y2 - y1), 'V')]);
     }
     c.restore();
+  }
+  function drawBus(c) {
+    const evs = U.runDecoders(), w = S.window(), tl = 0; let slot = 0;
+    evs.forEach((ev, idx) => {
+      const d = U.dec[idx]; if (!ev || !d.bus) return;
+      const y0 = GR.y + GR.h - 62 - (U.meas.length ? 44 : 0) - slot * 28; slot++;
+      c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(GR.x, y0 - 2, GR.w, 24);
+      OL.text(c, 'D' + (idx + 1) + ' ' + ({ rs232: 'RS232', i2c: 'I2C', spi: 'SPI' })[d.type], GR.x + 3, y0 - 8, { size: 10, color: '#9cf' });
+      ev.forEach(e => {
+        const x0 = GR.x + e.t0 / w * GR.w, x1 = GR.x + e.t1 / w * GR.w;
+        if (e.kind === 'start' || e.kind === 'restart' || e.kind === 'stop') { c.fillStyle = '#7fd'; c.fillRect(x0 - 1, y0, 2, 20); OL.text(c, e.text, x0 + 6, y0 + 10, { size: 11, color: '#7fd' }); return; }
+        const col = e.kind === 'err' || (e.err) ? '#a82020' : e.kind === 'addr' ? '#b07a12' : (e.line === 'RX' ? '#1f5fa8' : '#1c7a44');
+        const wd = Math.max(2, x1 - x0); OL.rrect(c, x0, y0 + 1, wd, 18, 4, col, '#ddd', 1);
+        if (wd > 14) { c.save(); c.beginPath(); c.rect(x0, y0, wd, 20); c.clip(); OL.text(c, U.evText(d, e), x0 + wd / 2, y0 + 10, { size: 12, color: '#fff', align: 'center', bold: true }); c.restore(); }
+      });
+      if (d.table) {                                              /* table d'événements */
+        const rows = ev.filter(e => e.kind !== 'start' && e.kind !== 'restart' && e.kind !== 'stop').slice(0, 11), tx = GR.x + GR.w - 262, ty = GR.y + 6;
+        OL.rrect(c, tx, ty, 256, 22 + (rows.length + 1) * 17, 4, 'rgba(0,0,0,.88)', '#8ab', 1);
+        OL.text(c, 'Event Table D' + (idx + 1), tx + 8, ty + 11, { size: 11.5, color: '#8cf', bold: true });
+        ['N°', 'Temps', 'Donnée', 'Infos'].forEach((h, k) => OL.text(c, h, tx + 8 + [0, 28, 102, 190][k], ty + 29, { size: 10.5, color: '#9ab' }));
+        rows.forEach((e, k) => { const yy = ty + 46 + k * 17, trel = e.t0 - (w / 2 - st.hdelay); OL.text(c, String(k + 1), tx + 8, yy, { size: 11 }); OL.text(c, OL.fmt(trel, 's', 3).replace(',', '.').replace('µ', 'u'), tx + 36, yy, { size: 11 }); OL.text(c, U.evText(d, e), tx + 110, yy, { size: 11, bold: true });
+          OL.text(c, e.err ? 'Err ' + e.err : (e.line ? e.line : (e.kind === 'addr' ? (e.rw ? 'Read' : 'Write') : '')), tx + 198, yy, { size: 10.5, color: e.err ? '#f66' : '#9ab' }); });
+        if (!rows.length) OL.text(c, 'Aucune donnée décodée', tx + 8, ty + 46, { size: 11, color: '#f99' });
+      }
+    });
   }
   function drawAll(c) {
     if (!U.allMeas) return; const s = U.mSrc || 0, v = S.volts(s); if (!v) return; const dt = S.window() / v.length, r = OL.measure(v, dt, v.length / 2 - st.hdelay / dt);
@@ -311,7 +419,7 @@ OL.RigolUI = function (root, S) {
     bSingle.classList.toggle('lit', S.status === 'WAIT' && !st.run);
     chk.forEach((k, i) => k.classList.toggle('sel', st.ch[i].on && U.sel === i));
     const mk = { measure: 'measure', acquire: 'acquire', storage: 'storage', cursor: 'cursor', display: 'display', utility: 'utility', math: 'math', trig: 'trigmenu', horiz: 'horizmenu', auto: 'auto' };
-    Object.keys(mk).forEach(m => { const e = U.ctl[mk[m]]; if (e) { e.classList.add('mk'); e.classList.toggle('lit', U.menu === m || (m === 'math' && st.math.on)); } });
+    Object.keys(mk).forEach(m => { const e = U.ctl[mk[m]]; if (e) { e.classList.add('mk'); e.classList.toggle('lit', U.menu === m || (m === 'math' && (st.math.on || U.dec.some(d => d.on)))); } });
     if (U.ctl.qm) { U.ctl.qm.classList.add('mk'); U.ctl.qm.classList.toggle('lit', U.qm !== null); }
   };
 };

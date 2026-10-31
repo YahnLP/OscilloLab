@@ -7,10 +7,11 @@ const $ = s => document.querySelector(s);
 const App = OL.App = { dev: 'owon', scope: null, ui: null, bench: null, tp: null, seed: 1, rnd: null, tpui: null };
 
 App.makeBench = function () {
-  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}), noisy: OL.NoisySignal({}) };
+  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}), noisy: OL.NoisySignal({}), uart: OL.UartSource({}), i2c: OL.I2CSource({}), spi: OL.SPISource({}) };
 };
 /* construit un appareil + une paillasse ; tp = null pour le mode libre */
 App.build = function (dev, tp, seed) {
+  if (tp && tp.devices && tp.devices.indexOf(dev) < 0) { tp = null; App.pendingNote = 'Ce TP utilise le décodeur série du RIGOL : l\'OWON n\'en possède pas.'; }
   App.dev = dev; App.tp = tp || null; App.seed = seed || 1; const P = OL.PROFILES[dev];
   App.bench = App.makeBench(); App.bench.comp = OL.ProbeComp(P.compVpp); App.rnd = OL.rng(App.seed);
   const box = $('#scopeBox'); box.innerHTML = '';
@@ -26,7 +27,7 @@ App.build = function (dev, tp, seed) {
   App.benchUI = new OL.Bench($('#benchPop'), App, tp && tp.only ? { only: tp.only } : {});
   App.fit();
 };
-App.startTP = function (tp, seed) { App.build(App.dev, tp, seed); };
+App.startTP = function (tp, seed) { if (tp.devices && tp.devices.indexOf(App.dev) < 0) App.dev = tp.devices[0]; App.build(App.dev, tp, seed); };
 App.free = function (keepList) { App.build(App.dev, null, 1); if (!keepList) App.tpui.list(); };
 App.fit = function () {
   if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw, g.innerWidth > 1250 ? (g.innerHeight - 140) / bh : 9);
@@ -45,7 +46,7 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 g.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#devSeg button').forEach(b => b.addEventListener('click', () => { App.build(b.dataset.d, App.tp, App.seed); if (App.tp) App.tpui.render(); }));
+  document.querySelectorAll('#devSeg button').forEach(b => b.addEventListener('click', () => { App.build(b.dataset.d, App.tp, App.seed); if (App.tp) App.tpui.render(); else if (App.pendingNote) { App.tpui.list(); const n = document.createElement('div'); n.className = 'card'; n.style.borderColor = '#ffb020'; n.textContent = '⚠ ' + App.pendingNote; document.getElementById('tpPane').prepend(n); App.pendingNote = null; } }));
   g.addEventListener('resize', () => App.fit());
   const pop = $('#benchPop'); const show = k => { pop.classList.toggle('open', !!k); pop.querySelectorAll(':scope > div').forEach(d => { d.style.display = d.dataset.p === k ? '' : 'none'; }); document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.classList.toggle('pri', b.dataset.p === k)); App.pop = k; };
   document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); show(App.pop === b.dataset.p ? null : b.dataset.p); }));

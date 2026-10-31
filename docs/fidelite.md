@@ -37,3 +37,9 @@ Ce document dit **ce qui est reproduit fidèlement**, **ce qui est simplifié** 
 - Pas exact de POSITION, du niveau de déclenchement et du curseur.
 - Valeurs de la sortie de compensation (OWON 5 V / 1 kHz d'après la fiche ; RIGOL 3 V / 1 kHz).
 - Disposition précise de certaines touches de l'OWON (la photo est de basse résolution).
+
+## 5. Décodeur série du RIGOL (TP 18 à 20)
+- **Source :** manuel *DS1000Z User Guide* (chapitre « Protocol Decoding ») et retours d'utilisateurs : menu **MATH → Decode1 / Decode2**, décodeurs RS232 (TX, RX, polarité, endian, baud, bits de données, stop, parité, seuils, format), I2C (SCL, SDA, seuils, adresse), SPI (SS/CS, SCLK, MOSI, MISO, polarité, front, bits, endian, seuils), BusStatus, table d'événements (export CSV non simulé).
+- **Option logicielle (SA-DS1000Z)** : elle n'est pas toujours activée sur l'appareil. À vérifier.
+- **Reproduit :** le décodeur travaille sur ce qui est affiché ; un seuil à 0 V ou une mauvaise vitesse donnent un décodage faux ; déclenchement RS232 (bit de start), I2C (Start / Stop), SPI (CS).
+- **À valider :** libellés exacts des touches (par exemple « Polarity »), seuils par défaut (0 V ici), mode SPI « Timeout » non simulé.

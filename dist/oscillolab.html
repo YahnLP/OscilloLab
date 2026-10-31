@@ -358,6 +358,60 @@ OL.NoisySignal = function (o) {
   Object.defineProperty(s, 'noiseRms', { get: () => s.noise });
   return s;
 };
+
+/* ---------- Liaison série UART / RS-232 : messages répétés ---------- */
+OL.UartSource = function (o) {
+  const s = Object.assign({ kind: 'uart', name: 'Liaison série UART', baud: 9600, text: 'Hello', reply: 'OK', databits: 8, parity: 'none', stop: 1, level: 'ttl', vhigh: 3.3, period: 0.08, lsb: true }, o);
+  const par = (v) => { let n = 0; for (let i = 0; i < s.databits; i++) n += (v >> i) & 1; return s.parity === 'even' ? n & 1 : (n & 1) ^ 1; };
+  s.bitsOf = ch => { const v = ch.charCodeAt(0) & ((1 << s.databits) - 1), b = [0]; for (let i = 0; i < s.databits; i++) b.push(s.lsb ? (v >> i) & 1 : (v >> (s.databits - 1 - i)) & 1); if (s.parity !== 'none') b.push(par(v)); for (let i = 0; i < Math.ceil(s.stop); i++) b.push(1); return b; };
+  s.frameBits = txt => [].concat(...Array.from(txt).map(s.bitsOf));
+  s.Tb = () => 1 / s.baud;
+  s.msgTime = txt => s.frameBits(txt).length * s.Tb();
+  s.periodEff = () => Math.max(s.period, 3 * (s.msgTime(s.text) + s.msgTime(s.reply)));
+  const volt = (b) => s.level === 'rs232' ? (b ? -9 : 9) : (b ? s.vhigh : 0);
+  const gen = (txt, off) => t => { const P = s.periodEff(), u = ((t % P) + P) % P - off, tb = s.Tb(), bits = s.frameBits(txt); if (u < 0 || u >= bits.length * tb) return volt(1); return volt(bits[Math.floor(u / tb)]); };
+  let cache = {}; const memo = (k, f) => t => { const key = k + s.text + s.reply + s.baud + s.databits + s.parity + s.stop + s.lsb + s.level + s.period; if (!cache[key]) { cache = {}; cache[key] = { bits: { tx: s.frameBits(s.text), rx: s.frameBits(s.reply) } }; } return f(t, cache[key].bits[k]); };
+  s.nodes = {
+    tx: { label: 'TX (émission)', fn: memo('tx', (t, bits) => { const P = s.periodEff(), u = ((t % P) + P) % P, tb = s.Tb(); return u < bits.length * tb ? volt(bits[Math.floor(u / tb)]) : volt(1); }) },
+    rx: { label: 'RX (réception)', fn: memo('rx', (t, bits) => { const P = s.periodEff(), off = P / 2, u = (((t % P) + P) % P) - off, tb = s.Tb(); return u >= 0 && u < bits.length * tb ? volt(bits[Math.floor(u / tb)]) : volt(1); }) }
+  };
+  s.fhint = () => s.baud / 2;
+  return s;
+};
+/* ---------- Bus I2C : SCL et SDA ---------- */
+OL.I2CSource = function (o) {
+  const s = Object.assign({ kind: 'i2c', name: 'Bus I²C', fscl: 100e3, addr: 0x3C, read: false, data: [0xA5, 0x3C], ack: true, vhigh: 3.3, period: 0.01 }, o);
+  s.bytes = () => s.ack ? [(s.addr << 1) | (s.read ? 1 : 0)].concat(s.data) : [(s.addr << 1) | (s.read ? 1 : 0)];
+  s.total = () => s.bytes().length * 9 / s.fscl + 4 / s.fscl;
+  const state = u => {
+    const T = 1 / s.fscl, h = T / 2, t0 = 2 * h, by = s.bytes(), nb = by.length * 9;
+    if (u < t0) return [1, 1]; if (u < t0 + h) return [1, 0];
+    const ub = u - (t0 + h), tot = nb * T;
+    if (ub < tot) { const k = Math.floor(ub / T), ph = ub - k * T, bi = Math.floor(k / 9), b = k % 9; const sda = b < 8 ? (by[bi] >> (7 - b)) & 1 : (s.ack ? 0 : 1); return [ph < h ? 0 : 1, sda]; }
+    const ue = ub - tot; if (ue < h) return [0, 0]; if (ue < 2 * h) return [1, 0]; return [1, 1];
+  };
+  const at = k => t => { const P = Math.max(s.period, 2 * s.total()), u = ((t % P) + P) % P; return state(u)[k] ? s.vhigh : 0; };
+  s.nodes = { scl: { label: 'SCL (horloge)', fn: at(0) }, sda: { label: 'SDA (données)', fn: at(1) } };
+  s.fhint = () => s.fscl / 2;
+  return s;
+};
+/* ---------- Bus SPI mode 0 : SCLK, MOSI, MISO, CS ---------- */
+OL.SPISource = function (o) {
+  const s = Object.assign({ kind: 'spi', name: 'Bus SPI', fclk: 100e3, mosi: [0x9F, 0xA5, 0x3C], miso: [0x00, 0x1E, 0x7B], vhigh: 3.3, period: 0.01 }, o);
+  const state = u => {
+    const T = 1 / s.fclk, h = T / 2, tc = T, n = s.mosi.length * 8;
+    if (u < tc) return { cs: 1, clk: 0, mo: 0, mi: 0 };
+    const ub = u - (tc + h), tot = n * T;
+    if (ub < 0) return { cs: 0, clk: 0, mo: (s.mosi[0] >> 7) & 1, mi: (s.miso[0] >> 7) & 1 };
+    if (ub < tot) { const k = Math.floor(ub / T), ph = ub - k * T, by = Math.floor(k / 8), b = k % 8; return { cs: 0, clk: ph < h ? 0 : 1, mo: (s.mosi[by] >> (7 - b)) & 1, mi: (s.miso[by] >> (7 - b)) & 1 }; }
+    if (ub < tot + h) return { cs: 0, clk: 0, mo: 0, mi: 0 };
+    return { cs: 1, clk: 0, mo: 0, mi: 0 };
+  };
+  const at = k => t => { const P = Math.max(s.period, 3 * (s.mosi.length * 8 + 3) / s.fclk), u = ((t % P) + P) % P; const st = state(u); return st[k] ? s.vhigh : 0; };
+  s.nodes = { sclk: { label: 'SCLK (horloge)', fn: at('clk') }, mosi: { label: 'MOSI', fn: at('mo') }, miso: { label: 'MISO', fn: at('mi') }, cs: { label: 'CS (sélection)', fn: at('cs') } };
+  s.fhint = () => s.fclk / 2;
+  return s;
+};
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script><script>
@@ -422,7 +476,7 @@ SP.defaultSetup = function () {
     run: true, single: false,
     tdivIdx: OL.nearest(P.tdivs, 1e-3), hdelay: 0,
     ch: [], acq: 'sample', avgN: 16, dots: false, persist: 0, xy: false,
-    trig: { src: 0, slope: 'rise', level: 0, mode: 'auto', coup: 'dc', holdoff: 100e-9, sweepForce: false },
+    trig: { type: 'edge', pr: { src: 0, pol: 'normal', baud: 9600, scl: 0, sda: 1, when: 'start', cs: 0, csHigh: false }, src: 0, slope: 'rise', level: 0, mode: 'auto', coup: 'dc', holdoff: 100e-9, sweepForce: false },
     math: { on: false, op: 'a-b' }, xyPair: [0, 1], mem: 'auto', roll: false, measure: [], cursors: { mode: 'off', x: [-2, 2], y: [-2, 2], src: 0 }, sel: 0
   };
   for (let i = 0; i < P.nch; i++) this.st.ch.push({
@@ -523,6 +577,7 @@ SP.findTrigger = function (tStart, span) {
     const T = 0.02, up = Math.ceil(tStart / T) * T, dn = Math.ceil((tStart - T / 2) / T) * T + T / 2;
     return t.slope === 'fall' ? dn : t.slope === 'both' ? Math.min(up, dn) : up;
   }
+  if (t.type && t.type !== 'edge') return this.findProtoTrigger(tStart, span);
   const nd = this.nodeOf(i);
   if (!nd || !st.ch[i].on && false) return null;
   const f = nd.src.fhint ? nd.src.fhint() : 1e3;
@@ -555,6 +610,26 @@ SP.findTrigger = function (tStart, span) {
   return null;
 };
 
+/* déclenchement sur protocole : RS232 (bit de start), I2C (Start / Stop), SPI (CS actif) */
+SP.findProtoTrigger = function (tStart, span) {
+  const st = this.st, t = st.trig, pr = t.pr, ty = t.type;
+  const chs = ty === 'rs232' ? [pr.src] : ty === 'i2c' ? [pr.scl, pr.sda] : [pr.cs];
+  const nds = chs.map(i => this.nodeOf(i)); if (nds.some(n => !n)) return null;
+  const f = Math.max(...nds.map(n => (n.src.fhint ? n.src.fhint() : 1e3))), dt = Math.max(1e-9, Math.min(1 / (40 * f), this.window() / 1500, span / 20));
+  const lv = chs.map(i => t.level / st.ch[i].probe), pre = this.preTime(chs[0]), block = 4096, Tb = ty === 'rs232' ? 1 / pr.baud : 0;
+  let tt = tStart, scanned = 0, steps = 300000, hi = 0, prevA = null, prevB = null;
+  while (scanned < span && steps > 0) {
+    const g = timeGrid(tt, dt, block, scanned === 0 ? pre : 0), Y = chs.map(i => this.front(i, g.ts));
+    for (let k = g.m; k < g.ts.length; k++) {
+      const a = Y[0][k] > lv[0], b = Y[1] ? Y[1][k] > lv[1] : false;
+      if (ty === 'rs232') { const L = pr.pol === 'invert' ? !a : a; if (L) hi += dt; else { if (prevA === true && hi >= 0.9 * Tb) return g.ts[k]; hi = 0; } prevA = L; }
+      else if (ty === 'i2c') { if (prevB !== null && a && prevA) { if (pr.when === 'start' && prevB && !b) return g.ts[k]; if (pr.when === 'stop' && !prevB && b) return g.ts[k]; } prevA = a; prevB = b; }
+      else { const act = pr.csHigh ? a : !a; if (prevA !== null && act && !prevA) return g.ts[k]; prevA = act; }
+    }
+    tt += block * dt; scanned += block * dt; steps -= block;
+  }
+  return null;
+};
 /* ----- acquisition ----- */
 SP.acquire = function (tLeft) {
   const st = this.st, P = this.P, w = this.window();
@@ -764,6 +839,97 @@ OL.fmtMeas = function (def, v) {
   if (v === null || v === undefined || !isFinite(v)) return '****';
   if (def.u === '%') return OL.fmtNum(v, 1) + '%'; if (def.u === '') return String(Math.round(v));
   return OL.fmt(v, def.u, 4);
+};
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script><script>
+/* decode.js — décodeurs de bus série (UART/RS232, I2C, SPI) : analysent les données AFFICHÉES à l'écran,
+   comme le décodeur de l'oscilloscope. Entrées : tableaux de volts (une valeur par colonne) et durée d'une colonne. */
+(function (g) {
+'use strict';
+const OL = g.OL = g.OL || {};
+const hex2 = v => (v < 16 ? '0' : '') + v.toString(16).toUpperCase();
+OL.fmtVal = function (v, fmt, bits) {
+  bits = bits || 8;
+  if (fmt === 'ascii') { return v >= 32 && v < 127 ? String.fromCharCode(v) : (v === 10 ? '\\n' : v === 13 ? '\\r' : '·'); }
+  if (fmt === 'dec') return String(v); if (fmt === 'bin') { let s = v.toString(2); while (s.length < bits) s = '0' + s; return s; }
+  return (bits > 8 ? v.toString(16).toUpperCase() : hex2(v));
+};
+/* franchissement : indice fractionnaire du premier passage de y[...] au seuil dans le sens demandé à partir de i0 */
+function logic(y, thr, inv) { const out = new Uint8Array(y.length); for (let i = 0; i < y.length; i++) out[i] = ((y[i] > thr) !== !!inv) ? 1 : 0; return out; }
+function ysafe(y) { return y ? y : null; }
+
+/* ---------- UART / RS232 ---------- */
+OL.decodeUART = function (y, dt, c) {
+  const ev = []; if (!y) return ev;
+  const L = logic(y, c.thr, c.invert), N = L.length, Tb = 1 / c.baud;
+  let i = 1;
+  while (i < N) {
+    if (L[i - 1] === 1 && L[i] === 0) {                       /* front descendant : début du bit de start */
+      const t0 = i * dt; const nbits = c.dataBits + (c.parity !== 'none' ? 1 : 0), end = t0 + (1 + nbits + c.stop) * Tb;
+      if (end > N * dt) { ev.push({ t0, t1: N * dt, kind: 'err', text: '…', err: 'incomplet' }); break; }
+      const at = t => L[Math.min(N - 1, Math.max(0, Math.round(t / dt)))];
+      let v = 0, ones = 0;
+      for (let j = 0; j < c.dataBits; j++) { const b = at(t0 + (1.5 + j) * Tb); ones += b; if (c.endian === 'lsb') v |= b << j; else v |= b << (c.dataBits - 1 - j); }
+      let err = null;
+      if (c.parity !== 'none') { const pb = at(t0 + (1.5 + c.dataBits) * Tb); const exp = c.parity === 'even' ? ones & 1 : (ones & 1) ^ 1; if (pb !== exp) err = 'parité'; }
+      const sb = at(t0 + (1.5 + nbits) * Tb); if (sb !== 1) err = err || 'stop';
+      ev.push({ t0, t1: end, kind: err ? 'err' : 'data', val: v, bits: c.dataBits, err });
+      i = Math.max(i + 1, Math.floor((end - 0.5 * Tb) / dt));
+      while (i < N && L[i] === 0) i++;                         /* attend le retour au repos avant de chercher un nouveau start */
+    } else i++;
+  }
+  return ev;
+};
+
+/* ---------- I2C ---------- */
+OL.decodeI2C = function (scl, sda, dt, c) {
+  const ev = []; if (!scl || !sda) return ev;
+  const C = logic(scl, c.thrScl, false), D = logic(sda, c.thrSda, false), N = Math.min(C.length, D.length);
+  let state = 'idle', bits = [], byteIdx = 0, tByte = 0;
+  const flush = (i) => { };
+  for (let i = 1; i < N; i++) {
+    const sclHigh = C[i] === 1 && C[i - 1] === 1;
+    if (sclHigh && D[i - 1] === 1 && D[i] === 0) { /* START ou RESTART */
+      ev.push({ t0: i * dt, t1: i * dt, kind: state === 'idle' ? 'start' : 'restart', text: state === 'idle' ? 'S' : 'Sr' }); state = 'bits'; bits = []; byteIdx = 0; tByte = i * dt; continue; }
+    if (sclHigh && D[i - 1] === 0 && D[i] === 1) { if (state !== 'idle') ev.push({ t0: i * dt, t1: i * dt, kind: 'stop', text: 'P' }); state = 'idle'; bits = []; continue; }
+    if (state !== 'idle' && C[i - 1] === 0 && C[i] === 1) {   /* front montant de SCL : échantillonnage de SDA */
+      if (!bits.length) tByte = i * dt; bits.push(D[i]);
+      if (bits.length === 9) {
+        let v = 0; for (let k = 0; k < 8; k++) v = (v << 1) | bits[k]; const ack = bits[8] === 0, t1 = i * dt;
+        if (byteIdx === 0) ev.push({ t0: tByte, t1, kind: 'addr', val: v >> 1, rw: v & 1, ack, bits: 7 });
+        else ev.push({ t0: tByte, t1, kind: 'data', val: v, ack, bits: 8, rw: ev.filter(e => e.kind === 'addr').pop().rw });
+        byteIdx++; bits = [];
+      }
+    }
+  }
+  return ev;
+};
+
+/* ---------- SPI (CS actif bas ou haut, échantillonnage sur front montant ou descendant de SCLK) ---------- */
+OL.decodeSPI = function (clk, mosi, miso, cs, dt, c) {
+  const ev = []; if (!clk || !cs) return ev;
+  const K = logic(clk, c.thrClk, false), S = logic(cs, c.thrCs, c.csHigh ? true : false), M = mosi ? logic(mosi, c.thrMosi, false) : null, I = miso ? logic(miso, c.thrMiso, false) : null, N = K.length;
+  /* S = 1 quand CS est actif (bas par défaut → inversé pour obtenir "actif") */
+  const active = i => (c.csHigh ? S[i] === 1 : S[i] === 0);
+  let inFrame = false, wm = [], wi = [], tw = 0;
+  const bitsMax = c.dataBits;
+  for (let i = 1; i < N; i++) {
+    const a = active(i);
+    if (a && !active(i - 1)) { inFrame = true; wm = []; wi = []; ev.push({ t0: i * dt, t1: i * dt, kind: 'start', text: 'CS' }); }
+    if (!a && active(i - 1)) { inFrame = false; wm = []; wi = []; }
+    if (!inFrame) continue;
+    const edge = c.edge === 'rise' ? (K[i - 1] === 0 && K[i] === 1) : (K[i - 1] === 1 && K[i] === 0);
+    if (edge) {
+      if (!wm.length) tw = i * dt;
+      if (M) wm.push(M[i]); if (I) wi.push(I[i]);
+      if (wm.length === bitsMax || (!M && wi.length === bitsMax)) {
+        const val = arr => { let v = 0; for (let k = 0; k < arr.length; k++) v = c.endian === 'msb' ? (v << 1) | arr[k] : v | (arr[k] << k); return v >>> 0; };
+        ev.push({ t0: tw, t1: i * dt, kind: 'data', val: M ? val(wm) : null, valMiso: I ? val(wi) : null, bits: bitsMax }); wm = []; wi = [];
+      }
+    }
+  }
+  return ev;
 };
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -1448,13 +1614,23 @@ OL.RigolUI = function (root, S) {
     { label: 'Probe', val: () => c.probe + 'X', opts: P.probes.map(k => opt(k + 'X', () => { c.probe = k; S.resetAvg(); })) },
     { label: 'Invert', val: () => c.inv ? 'ON' : 'OFF', opts: [opt('OFF', () => { c.inv = false; }), opt('ON', () => { c.inv = true; })] },
     { label: 'Volts/Div', val: () => c.fineMode ? 'Fine' : 'Coarse', opts: [opt('Coarse', () => { c.fineMode = false; c.fk = 0; }), opt('Fine', () => { c.fineMode = true; })] }]; };
-  menus.trig = () => { const t = st.trig; return [
-    { label: 'Type', val: () => 'Edge', opts: ['Edge', 'Pulse', 'Slope', 'Video', 'Pattern', 'Duration', 'TimeOut', 'Runt', 'Window', 'Delay', 'Setup/Hold', 'Nth Edge', 'RS232', 'I2C', 'SPI'].map(n => opt(n, () => { if (n !== 'Edge') msg('Non simulé : seul le déclenchement sur front (Edge) est disponible'); })) },
+  const TYPES = [['edge', 'Edge'], ['rs232', 'RS232'], ['i2c', 'I2C'], ['spi', 'SPI']];
+  const chOpts = (get, set, off) => (off ? [opt('OFF', () => set(null))] : []).concat(P.chNames.map((n, k) => opt(n, () => set(k))));
+  const thrItem = (label, o, key) => ({ label, val: () => OL.fmt(o[key], 'V', 3).replace(',', '.'), knob: n => { o[key] = Math.round((o[key] + n * 0.1) * 100) / 100; }, push: () => { o[key] = 0; } });
+  menus.trig = () => {
+    const t = st.trig, pr = t.pr;
+    const typeItem = { label: 'Type', val: () => (TYPES.find(x => x[0] === t.type) || ['', 'Edge'])[1], opts: TYPES.map(([id, n]) => opt(n, () => { t.type = id; })).concat(['Pulse', 'Slope', 'Video', 'Pattern', 'Duration', 'TimeOut', 'Runt', 'Window', 'Delay', 'Setup/Hold', 'Nth Edge'].map(n => opt(n, () => msg('Type de déclenchement non simulé : seuls Edge, RS232, I2C et SPI sont disponibles')))) };
+    const sweep = { label: 'Sweep', val: () => ({ auto: 'Auto', normal: 'Normal', single: 'Single' })[t.mode], opts: [opt('Auto', () => { t.mode = 'auto'; }), opt('Normal', () => { t.mode = 'normal'; }), opt('Single', () => { t.mode = 'single'; S.arm(); })] };
+    if (t.type === 'rs232') return [typeItem, { label: 'Source', val: () => P.chNames[pr.src], opts: chOpts(() => pr.src, k => { pr.src = k; }) }, { label: 'Polarity', val: () => pr.pol === 'normal' ? 'Normal' : 'Invert', opts: [opt('Normal', () => { pr.pol = 'normal'; }), opt('Invert', () => { pr.pol = 'invert'; })] }, { label: 'When', val: () => 'Start', opts: [opt('Start', () => { })] }, { label: 'Baud', val: () => String(pr.baud), opts: [2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => opt(String(b), () => { pr.baud = b; })) }, sweep, { label: 'Level', val: () => OL.fmt(t.level, 'V', 3).replace(',', '.'), knob: n => level(n), push: () => level0() }];
+    if (t.type === 'i2c') return [typeItem, { label: 'SCL', val: () => P.chNames[pr.scl], opts: chOpts(() => pr.scl, k => { pr.scl = k; }) }, { label: 'SDA', val: () => P.chNames[pr.sda], opts: chOpts(() => pr.sda, k => { pr.sda = k; }) }, { label: 'When', val: () => pr.when === 'start' ? 'Start' : 'Stop', opts: [opt('Start', () => { pr.when = 'start'; }), opt('Stop', () => { pr.when = 'stop'; })] }, sweep, { label: 'Level', val: () => OL.fmt(t.level, 'V', 3).replace(',', '.'), knob: n => level(n), push: () => level0() }];
+    if (t.type === 'spi') return [typeItem, { label: 'CS', val: () => P.chNames[pr.cs], opts: chOpts(() => pr.cs, k => { pr.cs = k; }) }, { label: 'CS Polarity', val: () => pr.csHigh ? 'High' : 'Low', opts: [opt('Low', () => { pr.csHigh = false; }), opt('High', () => { pr.csHigh = true; })] }, sweep, { label: 'Level', val: () => OL.fmt(t.level, 'V', 3).replace(',', '.'), knob: n => level(n), push: () => level0() }];
+    return [typeItem,
     { label: 'Source', val: () => t.src === 'line' ? 'AC Line' : P.chNames[t.src], opts: P.chNames.map((n, k) => opt(n, () => { t.src = k; })).concat([opt('AC Line', () => { t.src = 'line'; })]) },
     { label: 'Slope', val: () => t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', opts: [opt('↗ Rising', () => { t.slope = 'rise'; }), opt('↘ Falling', () => { t.slope = 'fall'; }), opt('↗↘ Both', () => { t.slope = 'both'; })] },
-    { label: 'Sweep', val: () => ({ auto: 'Auto', normal: 'Normal', single: 'Single' })[t.mode], opts: [opt('Auto', () => { t.mode = 'auto'; }), opt('Normal', () => { t.mode = 'normal'; }), opt('Single', () => { t.mode = 'single'; S.arm(); })] },
+    sweep,
     { label: 'Coupling', val: () => ({ dc: 'DC', ac: 'AC', hf: 'HF Reject', lf: 'LF Reject' })[t.coup], opts: [opt('DC', () => { t.coup = 'dc'; }), opt('AC', () => { t.coup = 'ac'; }), opt('LF Reject', () => { t.coup = 'lf'; }), opt('HF Reject', () => { t.coup = 'hf'; })] },
-    { label: 'Holdoff', val: () => OL.fmt(t.holdoff, 's'), knob: n => { t.holdoff = Math.max(100e-9, Math.min(10, t.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); }, push: () => { t.holdoff = 100e-9; } }]; };
+    { label: 'Holdoff', val: () => OL.fmt(t.holdoff, 's'), knob: n => { t.holdoff = Math.max(100e-9, Math.min(10, t.holdoff * (n > 0 ? 1.1 : 1 / 1.1))); }, push: () => { t.holdoff = 100e-9; } }];
+  };
   const PAIRS = [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]];
   menus.horiz = () => [
     { label: 'Time Base', val: () => st.xy ? 'XY' : st.roll ? 'Roll' : 'YT', opts: [opt('YT', () => { st.xy = false; st.roll = false; }), opt('XY', () => { st.xy = true; st.roll = false; }), opt('Roll', () => { st.xy = false; st.roll = true; if (S.tdiv() < 0.2) st.tdivIdx = OL.nearest(P.tdivs, 0.2); })] },
@@ -1504,8 +1680,80 @@ OL.RigolUI = function (root, S) {
   menus.utility = () => [
     { label: 'System', val: () => '▼', opts: [opt('Self-Cal', () => { U.selfcal = performance.now(); })] },
     { label: 'Language', val: () => 'Français', opts: [opt('Français', () => { })] }];
-  menus.math = () => [
+  const mathMenu0 = () => [
     { label: 'Operate', val: () => ({ 'a+b': 'A+B', 'a-b': 'A-B', 'a*b': 'A×B', 'a/b': 'A/B' })[st.math.op] + (st.math.on ? '' : ' (OFF)'), opts: [opt('A+B', () => { st.math.op = 'a+b'; st.math.on = true; }), opt('A-B', () => { st.math.op = 'a-b'; st.math.on = true; }), opt('A×B', () => { st.math.op = 'a*b'; st.math.on = true; }), opt('A/B', () => { st.math.op = 'a/b'; st.math.on = true; }), opt('OFF', () => { st.math.on = false; })] }];
+  /* ----- décodeurs série (option SA-DS1000Z) : MATH → Decode1 / Decode2 ----- */
+  U.mathTab = 'math';
+  const decDef = () => ({ on: false, type: 'rs232', bus: true, table: false, fmt: 'hex',
+    rs: { tx: 0, rx: null, thrTx: 0, thrRx: 0, pol: 'normal', endian: 'lsb', baud: 9600, dataBits: 8, stop: 1, parity: 'none' },
+    ic: { scl: 0, sda: 1, thrScl: 0, thrSda: 0, addr: 'normal' },
+    sp: { mode: 'cs', clk: 0, mosi: 1, miso: null, cs: 2, thrClk: 0, thrMosi: 0, thrMiso: 0, thrCs: 0, csHigh: false, edge: 'rise', dataBits: 8, endian: 'msb' } });
+  U.dec = [decDef(), decDef()];
+  const FMT = [['hex', 'Hex'], ['ascii', 'ASCII'], ['dec', 'Decimal'], ['bin', 'Binary']];
+  const decItems = d => {
+    const o = d.type === 'rs232' ? d.rs : d.type === 'i2c' ? d.ic : d.sp, L = [];
+    L.push({ label: 'Decode', val: () => d.on ? 'ON' : 'OFF', opts: [opt('OFF', () => { d.on = false; }), opt('ON', () => { d.on = true; })] });
+    L.push({ label: 'Decoder', val: () => ({ rs232: 'RS232', i2c: 'I2C', spi: 'SPI' })[d.type], opts: [opt('RS232', () => { d.type = 'rs232'; }), opt('I2C', () => { d.type = 'i2c'; }), opt('SPI', () => { d.type = 'spi'; })] });
+    if (d.type === 'rs232') {
+      L.push({ label: 'TX', val: () => o.tx === null ? 'OFF' : P.chNames[o.tx], opts: chOpts(() => o.tx, k => { o.tx = k; }, true) });
+      L.push({ label: 'RX', val: () => o.rx === null ? 'OFF' : P.chNames[o.rx], opts: chOpts(() => o.rx, k => { o.rx = k; }, true) });
+      L.push({ label: 'Polarity', val: () => o.pol === 'normal' ? 'Normal' : 'Invert', opts: [opt('Normal', () => { o.pol = 'normal'; }), opt('Invert', () => { o.pol = 'invert'; })] });
+      L.push({ label: 'Endian', val: () => o.endian === 'lsb' ? 'LSB' : 'MSB', opts: [opt('LSB', () => { o.endian = 'lsb'; }), opt('MSB', () => { o.endian = 'msb'; })] });
+      L.push({ label: 'Baud', val: () => String(o.baud), opts: [2400, 4800, 9600, 19200, 38400, 57600, 115200].map(b => opt(String(b), () => { o.baud = b; })) });
+      L.push({ label: 'Data Bits', val: () => String(o.dataBits), opts: [5, 6, 7, 8, 9].map(n => opt(String(n), () => { o.dataBits = n; })) });
+      L.push({ label: 'Stop Bit', val: () => String(o.stop), opts: [opt('1', () => { o.stop = 1; }), opt('1.5', () => { o.stop = 1.5; }), opt('2', () => { o.stop = 2; })] });
+      L.push({ label: 'Parity', val: () => ({ none: 'None', odd: 'Odd', even: 'Even' })[o.parity], opts: [opt('None', () => { o.parity = 'none'; }), opt('Odd', () => { o.parity = 'odd'; }), opt('Even', () => { o.parity = 'even'; })] });
+      L.push(thrItem('TX Threshold', o, 'thrTx')); L.push(thrItem('RX Threshold', o, 'thrRx'));
+    } else if (d.type === 'i2c') {
+      L.push({ label: 'SCL', val: () => P.chNames[o.scl], opts: chOpts(() => o.scl, k => { o.scl = k; }) });
+      L.push({ label: 'SDA', val: () => P.chNames[o.sda], opts: chOpts(() => o.sda, k => { o.sda = k; }) });
+      L.push(thrItem('SCL Threshold', o, 'thrScl')); L.push(thrItem('SDA Threshold', o, 'thrSda'));
+      L.push({ label: 'Address', val: () => o.addr === 'normal' ? 'Normal' : 'R/W', opts: [opt('Normal', () => { o.addr = 'normal'; }), opt('R/W', () => { o.addr = 'rw'; })] });
+    } else {
+      L.push({ label: 'Mode', val: () => o.mode === 'cs' ? 'CS' : 'Timeout', opts: [opt('CS', () => { o.mode = 'cs'; }), opt('Timeout', () => msg('Mode Timeout : non simulé'))] });
+      L.push({ label: 'SCLK', val: () => P.chNames[o.clk], opts: chOpts(() => o.clk, k => { o.clk = k; }) });
+      L.push({ label: 'MOSI', val: () => o.mosi === null ? 'OFF' : P.chNames[o.mosi], opts: chOpts(() => o.mosi, k => { o.mosi = k; }, true) });
+      L.push({ label: 'MISO', val: () => o.miso === null ? 'OFF' : P.chNames[o.miso], opts: chOpts(() => o.miso, k => { o.miso = k; }, true) });
+      L.push({ label: 'CS', val: () => P.chNames[o.cs], opts: chOpts(() => o.cs, k => { o.cs = k; }) });
+      L.push({ label: 'CS Polarity', val: () => o.csHigh ? 'High' : 'Low', opts: [opt('Low', () => { o.csHigh = false; }), opt('High', () => { o.csHigh = true; })] });
+      L.push({ label: 'SCLK Slope', val: () => o.edge === 'rise' ? '↗' : '↘', opts: [opt('↗ Rising', () => { o.edge = 'rise'; }), opt('↘ Falling', () => { o.edge = 'fall'; })] });
+      L.push({ label: 'Data Bits', val: () => String(o.dataBits), opts: [4, 6, 8, 10, 12, 16, 24, 32].map(n => opt(String(n), () => { o.dataBits = n; })) });
+      L.push({ label: 'Endian', val: () => o.endian === 'msb' ? 'MSB' : 'LSB', opts: [opt('MSB', () => { o.endian = 'msb'; }), opt('LSB', () => { o.endian = 'lsb'; })] });
+      L.push(thrItem('SCLK Thr.', o, 'thrClk')); L.push(thrItem('MOSI Thr.', o, 'thrMosi')); L.push(thrItem('MISO Thr.', o, 'thrMiso')); L.push(thrItem('CS Thr.', o, 'thrCs'));
+    }
+    L.push({ label: 'Format', val: () => (FMT.find(x => x[0] === d.fmt) || FMT[0])[1], opts: FMT.map(([id, n]) => opt(n, () => { d.fmt = id; })) });
+    L.push({ label: 'BusStatus', val: () => d.bus ? 'ON' : 'OFF', opts: [opt('OFF', () => { d.bus = false; d.table = false; }), opt('ON', () => { d.bus = true; })] });
+    L.push({ label: 'Event Table', val: () => d.table ? 'ON' : 'OFF', opts: [opt('OFF', () => { d.table = false; }), opt('ON', () => { if (d.bus) d.table = true; else msg('Activez d\'abord BusStatus'); })] });
+    return L;
+  };
+  menus.math = () => {
+    const tab = { label: 'Fonction', val: () => ({ math: 'Math', dec1: 'Decode1', dec2: 'Decode2' })[U.mathTab], opts: [opt('Math', () => { U.mathTab = 'math'; U.page = 0; }), opt('Decode1', () => { U.mathTab = 'dec1'; U.page = 0; }), opt('Decode2', () => { U.mathTab = 'dec2'; U.page = 0; })] };
+    return U.mathTab === 'math' ? [tab].concat(mathMenu0()) : [tab].concat(decItems(U.dec[U.mathTab === 'dec1' ? 0 : 1]));
+  };
+  /* décodage des données affichées ; renvoie la liste d'événements de chaque décodeur actif */
+  U.runDecoders = function () {
+    const out = [], dt = S.window() / 1200;
+    U.dec.forEach((d, idx) => {
+      if (!d.on) { out.push(null); return; }
+      const v = i => (i === null || i === undefined || !st.ch[i] || !st.ch[i].on) ? null : S.volts(i);
+      let ev = [];
+      if (d.type === 'rs232') { const o = d.rs; const eT = o.tx === null ? [] : OL.decodeUART(v(o.tx), dt, { thr: o.thrTx, baud: o.baud, invert: o.pol === 'invert', endian: o.endian, dataBits: o.dataBits, parity: o.parity, stop: o.stop }).map(e => Object.assign(e, { line: 'TX' })), eR = o.rx === null ? [] : OL.decodeUART(v(o.rx), dt, { thr: o.thrRx, baud: o.baud, invert: o.pol === 'invert', endian: o.endian, dataBits: o.dataBits, parity: o.parity, stop: o.stop }).map(e => Object.assign(e, { line: 'RX' })); ev = eT.concat(eR).sort((a, b) => a.t0 - b.t0); }
+      else if (d.type === 'i2c') { const o = d.ic; ev = OL.decodeI2C(v(o.scl), v(o.sda), dt, { thrScl: o.thrScl, thrSda: o.thrSda }); }
+      else { const o = d.sp; ev = OL.decodeSPI(v(o.clk), v(o.mosi), v(o.miso), v(o.cs), dt, { thrClk: o.thrClk, thrMosi: o.thrMosi, thrMiso: o.thrMiso, thrCs: o.thrCs, csHigh: o.csHigh, edge: o.edge, dataBits: o.dataBits, endian: o.endian }); }
+      out.push(ev);
+    });
+    return out;
+  };
+  const evText = (d, e) => {
+    if (e.kind === 'start' || e.kind === 'restart' || e.kind === 'stop') return e.text;
+    if (e.kind === 'err' && e.val === undefined) return '?';
+    if (d.type === 'i2c' && e.kind === 'addr') return (d.ic.addr === 'rw' ? OL.fmtVal((e.val << 1) | e.rw, d.fmt === 'ascii' ? 'hex' : d.fmt, 8) : OL.fmtVal(e.val, d.fmt === 'ascii' ? 'hex' : d.fmt, 7)) + (e.rw ? ' R' : ' W') + (e.ack ? '' : ' ✗');
+    if (d.type === 'i2c') return OL.fmtVal(e.val, d.fmt, 8) + (e.ack ? '' : ' ✗');
+    if (d.type === 'spi') return OL.fmtVal(e.val, d.fmt, e.bits) + (e.valMiso !== null && e.valMiso !== undefined ? '/' + OL.fmtVal(e.valMiso, d.fmt, e.bits) : '');
+    return OL.fmtVal(e.val, d.fmt, e.bits);
+  };
+  U.evText = evText;
+
   const norm = s => String(s).toLowerCase().replace(/[^a-z0-9%]/g, '');
   function pressSoft(i) {
     const m = menus[U.menu]; if (!m) return; const items = m(); const idx = U.page * 6 + i; const it = items[idx]; if (!it) return;
@@ -1541,7 +1789,7 @@ OL.RigolUI = function (root, S) {
     const dp = sc.sampleRate() * sc.window(); OL.text(c, dp >= 1e6 ? (dp / 1e6).toFixed(1) + 'Mpts' : (dp / 1e3).toFixed(1) + 'kpts', 257, 26, { size: 11, align: 'center' });
     c.strokeStyle = '#aaa'; c.strokeRect(304.5, 8.5, 190, 16); c.fillStyle = '#333'; c.fillRect(306, 10, 187, 13); c.fillStyle = '#f90'; c.fillRect(398 - st.hdelay / S.window() * 20, 9, 7, 8);
     OL.rrect(c, 520, 6, 140, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'D', 528, 18, { size: 13, bold: true, color: '#f90' }); OL.text(c, OL.fmt(-st.hdelay, 's', 4).replace(',', '.').replace('µ', 'u'), 652, 18, { size: 14, align: 'right' });
-    const t = st.trig; OL.rrect(c, 676, 6, 120, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'T', 684, 18, { size: 13, bold: true }); OL.text(c, t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', 702, 18, { size: 13, color: '#fc0' });
+    const t = st.trig; OL.rrect(c, 676, 6, 120, 24, 3, '#0a0a0a', '#c33', 1.2); OL.text(c, 'T', 684, 18, { size: 13, bold: true }); if (t.type !== 'edge') OL.text(c, ({ rs232: 'RS232', i2c: 'I2C', spi: 'SPI' })[t.type], 700, 18, { size: 12, color: '#fc0', bold: true }); else OL.text(c, t.slope === 'rise' ? '↗' : t.slope === 'fall' ? '↘' : '↗↘', 702, 18, { size: 13, color: '#fc0' });
     if (t.src === 'line') OL.text(c, 'AC', 722, 18, { size: 12, color: '#fc0', bold: true }); else { c.fillStyle = cols[t.src]; c.fillRect(716, 12, 11, 12); OL.text(c, String(t.src + 1), 721, 18, { size: 10, color: '#000', align: 'center', bold: true }); }
     if (t.src !== 'line') OL.text(c, OL.fmt(t.level, 'V', 3).replace(',', '.').replace(' ', ''), 790, 18, { size: 13, align: 'right', color: '#fc0' });
     /* graticule */
@@ -1564,6 +1812,7 @@ OL.RigolUI = function (root, S) {
     const tx = GR.x + GR.w / 2 - st.hdelay / S.window() * GR.w; if (tx > GR.x && tx < GR.x + GR.w) { c.fillStyle = '#f90'; c.beginPath(); c.moveTo(tx - 6, GR.y - 8); c.lineTo(tx + 6, GR.y - 8); c.lineTo(tx, GR.y); c.closePath(); c.fill(); }
     if (U.cur.mode !== 'off') drawCursors(c);
     drawAll(c);
+    drawBus(c);
     drawMeas(c);
     /* barre des voies */
     for (let i = 0; i < 4; i++) {
@@ -1600,6 +1849,31 @@ OL.RigolUI = function (root, S) {
       const y1 = (cu.a - pos) * lab, y2 = (cu.b - pos) * lab; box(3, ['AY: ' + f(y1, 'V'), 'BY: ' + f(y2, 'V'), 'ΔY: ' + f(Math.abs(y2 - y1), 'V')]);
     }
     c.restore();
+  }
+  function drawBus(c) {
+    const evs = U.runDecoders(), w = S.window(), tl = 0; let slot = 0;
+    evs.forEach((ev, idx) => {
+      const d = U.dec[idx]; if (!ev || !d.bus) return;
+      const y0 = GR.y + GR.h - 62 - (U.meas.length ? 44 : 0) - slot * 28; slot++;
+      c.fillStyle = 'rgba(0,0,0,.55)'; c.fillRect(GR.x, y0 - 2, GR.w, 24);
+      OL.text(c, 'D' + (idx + 1) + ' ' + ({ rs232: 'RS232', i2c: 'I2C', spi: 'SPI' })[d.type], GR.x + 3, y0 - 8, { size: 10, color: '#9cf' });
+      ev.forEach(e => {
+        const x0 = GR.x + e.t0 / w * GR.w, x1 = GR.x + e.t1 / w * GR.w;
+        if (e.kind === 'start' || e.kind === 'restart' || e.kind === 'stop') { c.fillStyle = '#7fd'; c.fillRect(x0 - 1, y0, 2, 20); OL.text(c, e.text, x0 + 6, y0 + 10, { size: 11, color: '#7fd' }); return; }
+        const col = e.kind === 'err' || (e.err) ? '#a82020' : e.kind === 'addr' ? '#b07a12' : (e.line === 'RX' ? '#1f5fa8' : '#1c7a44');
+        const wd = Math.max(2, x1 - x0); OL.rrect(c, x0, y0 + 1, wd, 18, 4, col, '#ddd', 1);
+        if (wd > 14) { c.save(); c.beginPath(); c.rect(x0, y0, wd, 20); c.clip(); OL.text(c, U.evText(d, e), x0 + wd / 2, y0 + 10, { size: 12, color: '#fff', align: 'center', bold: true }); c.restore(); }
+      });
+      if (d.table) {                                              /* table d'événements */
+        const rows = ev.filter(e => e.kind !== 'start' && e.kind !== 'restart' && e.kind !== 'stop').slice(0, 11), tx = GR.x + GR.w - 262, ty = GR.y + 6;
+        OL.rrect(c, tx, ty, 256, 22 + (rows.length + 1) * 17, 4, 'rgba(0,0,0,.88)', '#8ab', 1);
+        OL.text(c, 'Event Table D' + (idx + 1), tx + 8, ty + 11, { size: 11.5, color: '#8cf', bold: true });
+        ['N°', 'Temps', 'Donnée', 'Infos'].forEach((h, k) => OL.text(c, h, tx + 8 + [0, 28, 102, 190][k], ty + 29, { size: 10.5, color: '#9ab' }));
+        rows.forEach((e, k) => { const yy = ty + 46 + k * 17, trel = e.t0 - (w / 2 - st.hdelay); OL.text(c, String(k + 1), tx + 8, yy, { size: 11 }); OL.text(c, OL.fmt(trel, 's', 3).replace(',', '.').replace('µ', 'u'), tx + 36, yy, { size: 11 }); OL.text(c, U.evText(d, e), tx + 110, yy, { size: 11, bold: true });
+          OL.text(c, e.err ? 'Err ' + e.err : (e.line ? e.line : (e.kind === 'addr' ? (e.rw ? 'Read' : 'Write') : '')), tx + 198, yy, { size: 10.5, color: e.err ? '#f66' : '#9ab' }); });
+        if (!rows.length) OL.text(c, 'Aucune donnée décodée', tx + 8, ty + 46, { size: 11, color: '#f99' });
+      }
+    });
   }
   function drawAll(c) {
     if (!U.allMeas) return; const s = U.mSrc || 0, v = S.volts(s); if (!v) return; const dt = S.window() / v.length, r = OL.measure(v, dt, v.length / 2 - st.hdelay / dt);
@@ -1639,7 +1913,7 @@ OL.RigolUI = function (root, S) {
     bSingle.classList.toggle('lit', S.status === 'WAIT' && !st.run);
     chk.forEach((k, i) => k.classList.toggle('sel', st.ch[i].on && U.sel === i));
     const mk = { measure: 'measure', acquire: 'acquire', storage: 'storage', cursor: 'cursor', display: 'display', utility: 'utility', math: 'math', trig: 'trigmenu', horiz: 'horizmenu', auto: 'auto' };
-    Object.keys(mk).forEach(m => { const e = U.ctl[mk[m]]; if (e) { e.classList.add('mk'); e.classList.toggle('lit', U.menu === m || (m === 'math' && st.math.on)); } });
+    Object.keys(mk).forEach(m => { const e = U.ctl[mk[m]]; if (e) { e.classList.add('mk'); e.classList.toggle('lit', U.menu === m || (m === 'math' && (st.math.on || U.dec.some(d => d.on)))); } });
     if (U.ctl.qm) { U.ctl.qm.classList.add('mk'); U.ctl.qm.classList.toggle('lit', U.qm !== null); }
   };
 };
@@ -1681,7 +1955,10 @@ OL.Bench = function (parent, App, opts) {
     add(b.ne555, 'out', 'NE555 — sortie (broche 3)'); add(b.ne555, 'cap', 'NE555 — condensateur (broches 2-6)');
     add(b.rc, 'in', 'RC — tension d\'entrée E'); add(b.rc, 'vc', 'RC — tension Uc aux bornes de C');
     add(b.rcf, 'in', 'Filtre RC — entrée Ue'); add(b.rcf, 'out', 'Filtre RC — sortie Us');
-    add(b.push, 'out', 'Bouton poussoir — sortie'); add(b.noisy, 'out', 'Capteur bruité — sortie'); add(b.dc, 'out', 'Alimentation continue');
+    add(b.push, 'out', 'Bouton poussoir — sortie'); add(b.noisy, 'out', 'Capteur bruité — sortie');
+    add(b.uart, 'tx', 'Liaison série UART — TX'); add(b.uart, 'rx', 'Liaison série UART — RX');
+    add(b.i2c, 'scl', 'Bus I²C — SCL'); add(b.i2c, 'sda', 'Bus I²C — SDA');
+    add(b.spi, 'sclk', 'Bus SPI — SCLK'); add(b.spi, 'mosi', 'Bus SPI — MOSI'); add(b.spi, 'miso', 'Bus SPI — MISO'); add(b.spi, 'cs', 'Bus SPI — CS'); add(b.dc, 'out', 'Alimentation continue');
     return l;
   };
   B.find = id => { const [k, key] = id.split('.'); const src = Object.values(App.bench).find(s => s && s.kind === k); return src ? { src, key } : null; };
@@ -1723,6 +2000,11 @@ OL.Bench.prototype.build = function () {
   mk('Filtre RC (déphasage)', b => { const r = E('div', 'row', b); const s = E('div', 'seg', r); [['low', 'Passe-bas'], ['high', 'Passe-haut']].forEach(([k, t]) => { const bt = E('button', k === bb.rcf.type ? 'on' : '', s, null, t); bt.addEventListener('click', () => { bb.rcf.type = k; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === bt)); }); }); numField(b, 'R', () => bb.rcf.R, v => { bb.rcf.R = Math.max(1, v); }, R); numField(b, 'C', () => bb.rcf.C, v => { bb.rcf.C = Math.max(1e-12, v); }, [['nF', 1e-9], ['µF', 1e-6]]); numField(b, 'Fréquence', () => bb.rcf.freq, v => { bb.rcf.freq = Math.max(0.1, v); }, Hz); numField(b, 'Amplitude (c-c)', () => bb.rcf.amp, v => { bb.rcf.amp = v; }, [['V', 1]]); });
   mk('Bouton poussoir', b => { const r = E('div', 'row', b); const p = E('button', 'btn pri', r, null, 'Appuyer'); const q = E('button', 'btn', r, null, 'Relâcher'); p.addEventListener('click', () => { bb.push.press((App.scope.scanEnd || App.scope.simT) + 0.003); }); q.addEventListener('click', () => bb.push.release()); const l = E('label', '', r); const cb = E('input', '', l); cb.type = 'checkbox'; cb.checked = bb.push.bounce; cb.addEventListener('change', () => { bb.push.bounce = cb.checked; }); l.append(' avec rebonds'); });
   mk('Capteur bruité', b => { numField(b, 'Fréquence', () => bb.noisy.freq, v => { bb.noisy.freq = Math.max(1, v); }, Hz); numField(b, 'Amplitude (c-c)', () => bb.noisy.amp, v => { bb.noisy.amp = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); numField(b, 'Bruit (efficace, à 100 MHz)', () => bb.noisy.noise, v => { bb.noisy.noise = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); numField(b, 'Ronflement 50 Hz', () => bb.noisy.hum, v => { bb.noisy.hum = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); });
+  const hexList = (b, label, get, set) => { const r = E('div', 'row', b); E('label', '', r, null, label); const i = E('input', '', r); i.type = 'text'; i.style.width = '140px'; i.value = get().map(v => v.toString(16).toUpperCase().padStart(2, '0')).join(' '); i.addEventListener('change', () => { const a = i.value.trim().split(/[\s,;]+/).map(x => parseInt(x, 16)).filter(x => isFinite(x) && x >= 0 && x < 256); if (a.length) set(a); i.value = get().map(v => v.toString(16).toUpperCase().padStart(2, '0')).join(' '); }); E('span', 'hint', r, null, 'hexa'); };
+  const selField = (b, label, opts, get, set) => { const r = E('div', 'row', b); E('label', '', r, null, label); const s = E('select', '', r); opts.forEach(([v, t]) => { const o = E('option', '', s, null, t); o.value = v; }); s.value = get(); s.addEventListener('change', () => set(isNaN(+s.value) || s.value === '' ? s.value : +s.value)); };
+  mk('Liaison série UART / RS-232', b => { selField(b, 'Vitesse', [2400, 4800, 9600, 19200, 38400, 57600, 115200].map(x => [x, x + ' bauds']), () => bb.uart.baud, v => { bb.uart.baud = v; }); const r = E('div', 'row', b); E('label', '', r, null, 'Message TX'); const i = E('input', '', r); i.type = 'text'; i.value = bb.uart.text; i.maxLength = 12; i.style.width = '130px'; i.addEventListener('input', () => { if (i.value) bb.uart.text = i.value; }); selField(b, 'Parité', [['none', 'Aucune'], ['even', 'Paire'], ['odd', 'Impaire']], () => bb.uart.parity, v => { bb.uart.parity = v; }); selField(b, 'Niveaux', [['ttl', 'TTL 0 / 3,3 V (repos haut)'], ['rs232', 'RS-232 ±9 V (repos bas)']], () => bb.uart.level, v => { bb.uart.level = v; }); });
+  mk('Bus I²C', b => { const r = E('div', 'row', b); E('label', '', r, null, 'Adresse (7 bits)'); const i = E('input', '', r); i.type = 'text'; i.style.width = '70px'; i.value = bb.i2c.addr.toString(16).toUpperCase(); i.addEventListener('change', () => { const v = parseInt(i.value, 16); if (isFinite(v) && v >= 0 && v < 128) bb.i2c.addr = v; i.value = bb.i2c.addr.toString(16).toUpperCase(); }); E('span', 'hint', r, null, 'hexa'); hexList(b, 'Octets envoyés', () => bb.i2c.data, v => { bb.i2c.data = v; }); selField(b, 'Sens', [[0, 'Écriture (W)'], [1, 'Lecture (R)']], () => bb.i2c.read ? 1 : 0, v => { bb.i2c.read = !!v; }); const l = E('label', '', E('div', 'row', b)); const c = E('input', '', l); c.type = 'checkbox'; c.checked = bb.i2c.ack; c.addEventListener('change', () => { bb.i2c.ack = c.checked; }); l.append(' le composant répond (ACK)'); numField(b, 'Fréquence SCL', () => bb.i2c.fscl, v => { bb.i2c.fscl = Math.max(1000, v); }, [['kHz', 1e3], ['MHz', 1e6]]); });
+  mk('Bus SPI', b => { hexList(b, 'Octets MOSI', () => bb.spi.mosi, v => { bb.spi.mosi = v; while (bb.spi.miso.length < v.length) bb.spi.miso.push(0); bb.spi.miso.length = v.length; }); hexList(b, 'Octets MISO', () => bb.spi.miso, v => { bb.spi.miso = v; }); numField(b, 'Fréquence SCLK', () => bb.spi.fclk, v => { bb.spi.fclk = Math.max(1000, v); }, [['kHz', 1e3], ['MHz', 1e6]]); });
   mk('Alimentation continue', b => { numField(b, 'Tension', () => bb.dc.v, v => { bb.dc.v = v; }, [['V', 1]]); numField(b, 'Ondulation (c-c)', () => bb.dc.ripple, v => { bb.dc.ripple = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); });
 };
 OL.Bench.prototype.refresh = function () { this.refreshers.forEach(f => f()); };
@@ -1773,7 +2055,7 @@ OL.TPUI.prototype.list = function () {
   const ls = E('button', 'btn pri', top, null, '📖 Les bases de l\'oscilloscope (à lire avant le TP 1)'); ls.addEventListener('click', () => T.lessons());
   const f = E('button', 'btn', top, null, 'Mode libre (tous les montages)');  f.addEventListener('click', () => { T.App.free(); });
   const L = E('div', 'tplist', c);
-  OL.TPS.forEach(tp => { const b = E('button', 'btn' + (T.done[tp.id] ? ' done' : ''), L, null, '<b>' + tp.n + '.</b> ' + tp.title + ' <span class="hint">— ' + tp.level + '</span>'); b.addEventListener('click', () => T.open(tp)); });
+  OL.TPS.forEach(tp => { const b = E('button', 'btn' + (T.done[tp.id] ? ' done' : ''), L, null, '<b>' + tp.n + '.</b> ' + tp.title + ' <span class="hint">— ' + tp.level + (tp.devices ? ' · RIGOL uniquement' : '') + '</span>'); b.addEventListener('click', () => T.open(tp)); });
   E('div', 'hint', c, null, 'Chaque TP règle le banc d\'essai pour toi. Les cases se cochent toutes seules quand l\'oscilloscope est bien réglé ; les questions se corrigent automatiquement.');
 };
 OL.TPUI.prototype.lessons = function () {
@@ -1817,13 +2099,14 @@ OL.TPUI.prototype.render = function () {
     (s.checks || []).forEach((ck, k) => { const row = E('div', 'chk', d, null, '<i>○</i><span>' + (typeof ck.label === 'function' ? ck.label(ctx) : ck.label) + '</span>'); T.checkEls.push({ row, ck, si }); });
     (s.questions || []).forEach((q, k) => {
       const id = tp.id + '.' + si + '.' + k, row = E('div', 'qrow', d); const lab = typeof q.label === 'function' ? q.label(ctx) : q.label; E('span', '', row, null, OL.tex(lab));
-      let inp; if (q.opts) { inp = E('select', '', row); E('option', '', inp, null, '— choisir —').value = ''; q.opts.forEach((o, i) => E('option', '', inp, null, o).value = i); } else { inp = E('input', '', row); inp.type = 'text'; inp.placeholder = q.unit || ''; inp.inputMode = 'decimal'; }
+      let inp; if (q.opts) { inp = E('select', '', row); E('option', '', inp, null, '— choisir —').value = ''; q.opts.forEach((o, i) => E('option', '', inp, null, o).value = i); } else { inp = E('input', '', row); inp.type = 'text'; inp.placeholder = q.unit || ''; inp.inputMode = q.str ? 'text' : 'decimal'; if (q.str) inp.style.width = '170px'; }
       if (q.unit && !q.opts) E('span', 'hint', row, null, q.unit);
       const btn = E('button', 'btn', row, null, 'Vérifier'); const res = E('span', 'res', row);
       if (T.q[id]) { inp.value = T.q[id].v; res.textContent = T.q[id].t; res.className = 'res ' + (T.q[id].ok ? 'ok' : 'bad'); }
       btn.addEventListener('click', () => {
         const ans = typeof q.ans === 'function' ? q.ans(T.ctx = OL.tpContext(T.App, T.App.rnd)) : q.ans; let ok, txt;
         if (q.opts) { ok = inp.value !== '' && +inp.value === ans; txt = ok ? '✓ Juste' : (inp.value === '' ? 'Choisis une réponse' : '✗ Pas tout à fait'); }
+        else if (q.str) { const norm = s => String(s).toUpperCase().replace(/\s+/g, ' ').replace(/[^A-Z0-9 ]/g, '').trim(); ok = norm(inp.value) === norm(ans) && (inp.value.trim() !== '' || String(ans) === ''); txt = ok ? '✓ Juste' : (inp.value.trim() === '' ? 'Écris ta réponse (laisse vide s\'il n\'y a rien)' : '✗ Pas tout à fait : relis le décodage'); }
         else { const v = parseNum(inp.value); ok = okNum(v, ans, q); txt = ok ? '✓ Juste' : (isFinite(v) ? '✗ ' + (q.hint || 'Pas tout à fait : revérifie ta lecture et l\'unité') : 'Entre un nombre'); }
         if (!ok && q.show) txt += ' (attendu ≈ ' + (q.show(ans)) + ')';
         T.q[id] = { v: inp.value, ok, t: txt }; res.textContent = txt; res.className = 'res ' + (ok ? 'ok' : 'bad'); T.score(); });
@@ -2138,6 +2421,71 @@ OL.TPS.push({
   ],
   note: 'Remarque : augmenter V/div fait disparaître le bruit… et le signal avec lui. Mieux vaut atténuer le bruit que le cacher.'
 });
+
+/* ====== TP 18 à 20 : décodeur série du RIGOL (option SA-DS1000Z) ====== */
+const decOn = (c, k) => c.U.dec && c.U.dec[k || 0].on;
+const decEv = (c, k) => { try { return c.U.runDecoders()[k || 0] || []; } catch (e) { return []; } };
+const txtOf = ev => ev.filter(e => e.kind === 'data').map(e => String.fromCharCode(e.val)).join('');
+const near = (a, b, tol) => Math.abs(a - b) <= tol;
+const winFits = (n, c, lo, hi) => { const w = c.S.window(); return w >= lo && w <= hi; };
+
+OL.TPS.push({
+  n: 18, id: 'decode-uart', title: 'Décoder une liaison série UART / RS-232', level: 'avancé', devices: ['rigol'],
+  goal: 'Un microcontrôleur envoie un message sur sa liaison série. Avec le <b>décodeur du RIGOL</b> (<b>MATH → Decode1</b>), l\'oscilloscope transforme les niveaux en <b>octets</b> et en <b>texte</b>. Il faut régler correctement le déclenchement, la vitesse (bauds), le seuil et la polarité.',
+  only: ['uart.tx', 'uart.rx'],
+  setup: c => { const u = c.B.uart; u.baud = R.pick(c.r, [9600, 19200, 38400]); u.text = R.pick(c.r, ['Hello', 'CIEL', 'Salut', 'Bac 42']); u.level = R.pick(c.r, ['ttl', 'ttl', 'rs232']); u.parity = 'none'; u.stop = 1; u.databits = 8; u.reply = 'OK'; wire(c, 0, 'uart.tx'); c.W.ch[0].trim = 0.25; c.st.ch[0].probe = 10; c.st.ch[0].vIdx = OL.nearest(c.P.vdivs, u.level === 'rs232' ? 0.5 : 0.1); c.st.tdivIdx = OL.nearest(c.P.tdivs, 2e-3); c.st.trig.level = 0; c.st.trig.slope = 'rise'; c.st.trig.mode = 'auto'; c.U.dec[0].rs.baud = 9600; },
+  steps: [
+    { title: 'Observer la trame et déclencher', html: c => '<p>La sortie <b>TX</b> du microcontrôleur est sur la voie 1 (' + (c.B.uart.level === 'rs232' ? '<b>niveaux RS-232</b> de ±9 V' : '<b>niveaux TTL</b> 0 / 3,3 V') + '). Au repos la ligne est <b>' + (c.B.uart.level === 'rs232' ? 'basse (négative)' : 'haute') + '</b> ; un octet commence par un <b>bit de start</b> qui fait quitter le repos. Déclenche sur le début du message, puis règle la base de temps pour voir <b>tout le message</b> (mode Single conseillé).</p>',
+      checks: [{ label: 'Déclenchement sur le bit de start (front adapté, niveau entre les deux états) ou déclenchement RS232', ok: c => { const t = c.st.trig; if (t.type === 'rs232') return true; const rs = c.B.uart.level === 'rs232'; return t.type === 'edge' && t.slope === (rs ? 'rise' : 'fall') && (rs ? Math.abs(t.level) < 4 : t.level > 0.6 && t.level < 2.7); } }, { label: 'Tout le message est à l\'écran (fenêtre ≥ durée du message)', ok: c => c.S.window() >= c.B.uart.msgTime(c.B.uart.text) * 1.1 && c.S.window() <= 220 / c.B.uart.baud * c.B.uart.text.length }, { label: 'Image capturée stable (déclenché ou arrêté)', ok: c => c.S.status === "TRIG'D" || c.S.status === 'STOP' }],
+      questions: [{ label: 'Durée d\'un bit (lue sur la trace)', unit: 'µs', ans: c => 1e6 / c.B.uart.baud, tol: 0.15 }, { label: 'Vitesse de la liaison ($1 / T_{bit}$)'.replace('$1 / T_{bit}$', '1 / durée d\'un bit'), unit: 'bauds', ans: c => c.B.uart.baud, tol: 0.15, hint: 'baud = 1 / durée d\'un bit (en secondes)' }] },
+    { title: 'Régler le décodeur', html: '<p>Ouvre <b>MATH → Decode1</b> et règle : Decode <b>ON</b>, décodeur <b>RS232</b>, <b>TX = CH1</b>, la <b>vitesse (Baud)</b> trouvée, 8 bits, pas de parité, format <b>ASCII</b>. Le <b>seuil (TX Threshold)</b> doit se trouver <b>entre les deux niveaux</b> de la ligne. Si la ligne est au repos bas (RS-232), choisis aussi la polarité <b>Invert</b>.</p>',
+      checks: [{ label: 'Decode1 activé, décodeur RS232, TX = CH1', ok: c => decOn(c) && c.U.dec[0].type === 'rs232' && c.U.dec[0].rs.tx === 0 }, { label: 'Vitesse réglée (Baud)', ok: c => c.U.dec[0].rs.baud === c.B.uart.baud }, { label: 'Seuil entre les deux niveaux de la ligne', ok: c => { const th = c.U.dec[0].rs.thrTx; return c.B.uart.level === 'rs232' ? Math.abs(th) < 5 : th > 0.6 && th < 2.7; } }, { label: 'Polarité adaptée au repos de la ligne', ok: c => c.U.dec[0].rs.pol === (c.B.uart.level === 'rs232' ? 'invert' : 'normal') }, { label: 'Format ASCII', ok: c => c.U.dec[0].fmt === 'ascii' }, { label: 'Message décodé sans erreur', ok: c => txtOf(decEv(c)) === c.B.uart.text && decEv(c).every(e => !e.err) }],
+      questions: [choice('Avec le seuil laissé à 0 V sur une ligne TTL (0 / 3,3 V), le décodeur…', ['décode très bien', 'ne trouve aucun bit de start valide (la ligne reste « haute »)', 'décode, mais en hexadécimal'], 1)] },
+    { title: 'Lire le message', html: '<p>Lis le texte décodé sur la bande « D1 RS232 », puis passe en <b>Hex</b> pour lire les valeurs des octets. Affiche aussi la <b>table d\'événements</b> (Event Table ON).</p>',
+      checks: [{ label: 'Table d\'événements affichée', ok: c => c.U.dec[0].table && c.U.dec[0].bus }],
+      questions: [{ label: 'Message envoyé par le microcontrôleur', str: true, ans: c => c.B.uart.text, hint: 'Lis les caractères sur la bande verte' }, { label: 'Code hexadécimal du premier caractère', str: true, ans: c => c.B.uart.text.charCodeAt(0).toString(16).toUpperCase() }, { label: 'Nombre d\'octets envoyés', unit: '', ans: c => c.B.uart.text.length, abs: 0 }, choice('Si le décodeur est réglé à la mauvaise vitesse, on obtient…', ['des caractères incohérents ou des erreurs', 'le bon message, plus lentement', 'rien du tout, jamais'], 0)] }
+  ],
+  note: 'Le décodeur série du DS1054Z est une option logicielle (SA-DS1000Z). Il analyse ce qui est affiché à l\'écran : le message doit y tenir entièrement. Menu et libellés à vérifier sur votre appareil.'
+});
+
+OL.TPS.push({
+  n: 19, id: 'decode-i2c', title: 'Décoder un bus I²C : adresse, données, ACK', level: 'avancé', devices: ['rigol'],
+  goal: 'Un bus <b>I²C</b> relie un microcontrôleur à un composant (écran, capteur…). Avec <b>deux voies</b> (SCL = horloge, SDA = données) et le décodeur, on lit l\'<b>adresse</b> du composant, le <b>sens</b> (lecture / écriture), les <b>données</b> et la réponse (<b>ACK</b>).',
+  only: ['i2c.scl', 'i2c.sda'],
+  setup: c => { const b = c.B.i2c; b.addr = R.pick(c.r, [0x3C, 0x48, 0x50, 0x68]); b.data = [R.pick(c.r, [0x00, 0x1F, 0x40, 0xA5]), R.pick(c.r, [0x3C, 0x7E, 0xC3, 0xFF])]; b.read = false; b.ack = R.pick(c.r, [true, true, false]); b.fscl = 100e3; wire(c, 0, 'i2c.scl'); wire(c, 1, 'i2c.sda'); c.W.ch[0].trim = 0.25; c.W.ch[1].trim = 0.25; [0, 1].forEach(i => { c.st.ch[i].on = true; c.st.ch[i].probe = 10; c.st.ch[i].vIdx = OL.nearest(c.P.vdivs, 0.2); }); c.st.ch[1].pos = -1.5; c.st.ch[0].pos = 1.5; c.st.tdivIdx = OL.nearest(c.P.tdivs, 100e-6); c.st.trig.level = 0; c.st.trig.mode = 'auto'; },
+  steps: [
+    { title: 'Observer SCL et SDA, déclencher sur le Start', html: '<p><b>CH1 = SCL</b> (horloge), <b>CH2 = SDA</b> (données). Au repos, les deux lignes sont <b>hautes</b>. Une trame commence par la <b>condition START</b> : SDA descend <b>pendant que SCL est haute</b>. Déclenche sur le Start (déclenchement <b>I2C</b>, condition <b>Start</b>) et règle la base de temps pour voir la trame entière. Mets le niveau vers 1,6 V.</p>',
+      checks: [{ label: 'Déclenchement I2C (condition Start) ou front descendant de SDA vers 1,6 V', ok: c => { const t = c.st.trig; return (t.type === 'i2c' && t.pr.when === 'start' && t.level > 0.6 && t.level < 2.7) || (t.type === 'edge' && t.src === 1 && t.slope === 'fall' && t.level > 0.6 && t.level < 2.7); } }, { label: 'Toute la trame est à l\'écran', ok: c => c.S.window() >= c.B.i2c.total() * 1.05 && c.S.window() <= 3 * c.B.i2c.total() }, { label: 'Image stable', ok: c => c.S.status === "TRIG'D" || c.S.status === 'STOP' }],
+      questions: [{ label: 'Fréquence de l\'horloge SCL', unit: 'kHz', ans: c => c.B.i2c.fscl / 1000, tol: 0.1 }, choice('La condition START est…', ['SDA qui descend pendant que SCL est haute', 'SCL qui monte pendant que SDA est basse', 'SDA qui monte pendant que SCL est haute'], 0)] },
+    { title: 'Régler le décodeur I²C', html: '<p><b>MATH → Decode1</b> : Decode <b>ON</b>, décodeur <b>I2C</b>, <b>SCL = CH1</b>, <b>SDA = CH2</b>, <b>seuils des deux lignes</b> vers 1,6 V (les pages suivantes avec ▼). Format Hex.</p>',
+      checks: [{ label: 'Decode1 activé, décodeur I2C, SCL = CH1, SDA = CH2', ok: c => decOn(c) && c.U.dec[0].type === 'i2c' && c.U.dec[0].ic.scl === 0 && c.U.dec[0].ic.sda === 1 }, { label: 'Seuils SCL et SDA entre les deux niveaux', ok: c => { const o = c.U.dec[0].ic; return o.thrScl > 0.6 && o.thrScl < 2.7 && o.thrSda > 0.6 && o.thrSda < 2.7; } }, { label: 'Adresse décodée à l\'écran', ok: c => decEv(c).some(e => e.kind === 'addr') }],
+      questions: [choice('Si le seuil de SDA est laissé à 0 V, le décodeur…', ['voit SDA toujours « haute » : aucun Start valide', 'décode quand même correctement', 'décode seulement l\'adresse'], 0)] },
+    { title: 'Lire la trame', html: '<p>Lis l\'<b>adresse sur 7 bits</b> (suivie du bit R/W), les <b>octets</b> de données et les <b>ACK</b>. Affiche la table d\'événements. Un <b>✗</b> sur un octet signale un <b>NACK</b> : personne n\'a répondu.</p>',
+      checks: [{ label: 'Table d\'événements affichée', ok: c => c.U.dec[0].table && c.U.dec[0].bus }],
+      questions: [{ label: 'Adresse du composant (7 bits, en hexadécimal)', str: true, ans: c => c.B.i2c.addr.toString(16).toUpperCase(), hint: 'Format Hex, adresse sur 7 bits' }, choice('Sens de la transmission', ['Écriture (W)', 'Lecture (R)'], 0), choice('Le composant a-t-il répondu (ACK) ?', ['oui', 'non (NACK)'], c => (c.B.i2c.ack ? 0 : 1)), { label: 'Octets de données envoyés (hexadécimal, séparés par un espace ; laisse vide si aucun)', str: true, ans: c => c.B.i2c.ack ? c.B.i2c.data.map(v => v.toString(16).toUpperCase().padStart(2, '0')).join(' ') : '', optional: true }]
+    }
+  ],
+  note: 'Dans un circuit réel, l\'adresse 7 bits + le bit R/W forment le premier octet : l\'adresse 0x3C en écriture donne l\'octet 0x78.'
+});
+
+OL.TPS.push({
+  n: 20, id: 'decode-spi', title: 'Décoder un bus SPI : trame et octets', level: 'avancé', devices: ['rigol'],
+  goal: 'Le bus <b>SPI</b> utilise <b>quatre lignes</b> : horloge (SCLK), données maître → esclave (MOSI), esclave → maître (MISO) et sélection (CS). Avec quatre voies, le décodeur du RIGOL affiche les octets échangés pendant que CS est actif.',
+  only: ['spi.sclk', 'spi.mosi', 'spi.miso', 'spi.cs'],
+  setup: c => { const s = c.B.spi; s.mosi = [R.pick(c.r, [0x9F, 0x03, 0x90]), R.pick(c.r, [0xA5, 0x5A, 0x3C]), R.pick(c.r, [0x01, 0xC3, 0xFF])]; s.miso = [0x00, R.pick(c.r, [0x1E, 0x20, 0xEF]), R.pick(c.r, [0x7B, 0x40, 0x16])]; s.fclk = 100e3; ['sclk', 'mosi', 'cs', 'miso'].forEach((k, i) => { wire(c, i, 'spi.' + k); c.W.ch[i].trim = 0.25; c.st.ch[i].on = true; c.st.ch[i].probe = 10; c.st.ch[i].vIdx = OL.nearest(c.P.vdivs, 0.2); c.st.ch[i].pos = [2.7, 0.9, -0.9, -2.7][i]; }); c.st.tdivIdx = OL.nearest(c.P.tdivs, 100e-6); c.st.trig.src = 2; c.st.trig.level = 0; c.st.trig.slope = 'fall'; c.st.trig.mode = 'auto'; },
+  steps: [
+    { title: 'Observer les quatre lignes', html: '<p>Voies : <b>CH1 = SCLK</b>, <b>CH2 = MOSI</b>, <b>CH3 = CS</b>, <b>CH4 = MISO</b>. Le <b>CS</b> passe à l\'état <b>bas</b> pendant toute la trame. Déclenche sur le <b>front descendant de CS</b> (niveau vers 1,6 V) et règle la base de temps pour voir la trame complète.</p>',
+      checks: [{ label: 'Déclenchement sur CS (voie 3, front descendant ou déclenchement SPI), niveau entre les deux états', ok: c => { const t = c.st.trig; return (t.type === 'spi' && t.pr.cs === 2 && t.level > 0.6 && t.level < 2.7) || (t.type === 'edge' && t.src === 2 && t.slope === 'fall' && t.level > 0.6 && t.level < 2.7); } }, { label: 'Toute la trame est à l\'écran', ok: c => c.S.window() >= (c.B.spi.mosi.length * 8 + 3) / c.B.spi.fclk * 1.05 && c.S.window() <= 4 * (c.B.spi.mosi.length * 8 + 3) / c.B.spi.fclk }, { label: 'Image stable', ok: c => c.S.status === "TRIG'D" || c.S.status === 'STOP' }],
+      questions: [{ label: 'Fréquence de l\'horloge SCLK', unit: 'kHz', ans: c => c.B.spi.fclk / 1000, tol: 0.1 }, { label: 'Nombre de fronts montants de SCLK pendant que CS est bas', unit: '', ans: c => c.B.spi.mosi.length * 8, abs: 0 }, choice('Au repos (CS haut), l\'horloge SCLK est…', ['basse', 'haute'], 0)] },
+    { title: 'Régler le décodeur SPI', html: '<p><b>MATH → Decode1</b> : Decode ON, décodeur <b>SPI</b>, <b>SCLK = CH1</b>, <b>MOSI = CH2</b>, <b>MISO = CH4</b>, <b>CS = CH3</b> (actif à l\'état bas), échantillonnage sur le front <b>montant</b> de SCLK, <b>8 bits</b>, <b>MSB</b> en premier. Règle les <b>seuils des quatre lignes</b> vers 1,6 V.</p>',
+      checks: [{ label: 'Decode1 SPI activé, lignes SCLK = CH1, MOSI = CH2, CS = CH3, MISO = CH4', ok: c => { const o = c.U.dec[0].sp; return decOn(c) && c.U.dec[0].type === 'spi' && o.clk === 0 && o.mosi === 1 && o.cs === 2 && o.miso === 3; } }, { label: 'Seuils des quatre lignes entre les deux niveaux', ok: c => { const o = c.U.dec[0].sp; return [o.thrClk, o.thrMosi, o.thrMiso, o.thrCs].every(v => v > 0.6 && v < 2.7); } }, { label: 'CS actif bas, front montant, 8 bits, MSB', ok: c => { const o = c.U.dec[0].sp; return !o.csHigh && o.edge === 'rise' && o.dataBits === 8 && o.endian === 'msb'; } }, { label: 'Octets MOSI décodés correctement', ok: c => decEv(c).filter(e => e.kind === 'data').map(e => e.val).join() === c.B.spi.mosi.join() }],
+      questions: [choice('Si on se trompe de bit de poids (LSB au lieu de MSB), l\'octet 0xA5 devient…', ['0xA5 (identique)', '0xA5 inversé bit à bit : 0xA5 → 0xA5 car symétrique', 'un autre octet (bits dans l\'ordre inverse)'], 2)] },
+    { title: 'Lire les échanges', html: '<p>Affiche la <b>table d\'événements</b> et lis ce que le maître envoie (<b>MOSI</b>) et ce que l\'esclave répond (<b>MISO</b>) : le format de table affiche <b>MOSI/MISO</b> pour chaque octet.</p>',
+      checks: [{ label: 'Table d\'événements affichée', ok: c => c.U.dec[0].table && c.U.dec[0].bus }],
+      questions: [{ label: 'Octets envoyés par le maître (MOSI), en hexadécimal séparés par un espace', str: true, ans: c => c.B.spi.mosi.map(v => v.toString(16).toUpperCase().padStart(2, '0')).join(' ') }, { label: 'Octets renvoyés par l\'esclave (MISO), en hexadécimal séparés par un espace', str: true, ans: c => c.B.spi.miso.map(v => v.toString(16).toUpperCase().padStart(2, '0')).join(' ') }, choice('Dans ce mode, les données sont échantillonnées sur…', ['le front montant de SCLK', 'le front descendant de SCLK'], 0)] }
+  ],
+  note: 'Le décodeur SPI du DS1054Z demande les lignes CS, SCLK et MOSI/MISO. Il analyse ce qui est affiché à l\'écran : la trame doit y tenir entièrement.'
+});
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -2245,6 +2593,24 @@ T['gerer-bruit'] = [
   { learn: 'En <b>moyennant</b> N balayages, le bruit est divisé par <b>√N</b> (16 balayages : bruit ÷ 4 ; 64 : ÷ 8). Le signal utile, lui, est conservé. Il faut un signal <b>répétitif</b> et un déclenchement <b>stable</b>, sinon on moyenne aussi le décalage entre balayages.', how: D([['Acquire → H1 (Mode) → F3 (Average)', ['acquire', 'h1', 'f3']], ['H2 (Averages) → F3 (64)', ['h2', 'f3']]], [['Acquire → 1re touche (Mode) : Averages (ou High Res)', ['acquire', 'soft1']], ['2e touche (Averages) : 64 (liste puis appui sur le bouton multifonction)', ['soft2', 'mf']]]), hint: 'Si l\'image devient floue après moyennage, le déclenchement est instable : reviens à l\'étape précédente.' },
   { learn: 'Plus le signal occupe de carreaux, plus le bruit est <b>petit relativement</b> à lui et plus la lecture est précise. On règle donc V/div pour <b>4 à 7 carreaux</b>. Augmenter V/div jusqu\'à ne plus voir le bruit serait une erreur : le signal rétrécit aussi.', how: D([['VOLTS/DIV : tourne vers la droite pour agrandir le signal', ['vdiv1']], ['VERTICAL POSITION : centre la trace', ['vpos1']]], [['SCALE vertical vers la droite pour agrandir', ['vscale']], ['POSITION : centre la trace', ['vpos']]]), hint: 'Pour la fréquence : lis la période sur la grille ou affiche la mesure Freq (Measure).' }
 ];
+
+const RG = a => D([['Ce TP utilise le décodeur série du RIGOL (option SA-DS1000Z). Passe sur le RIGOL en haut de la page.', []]], a);
+const decMenu = [['Appuie sur MATH, puis sur la 1re touche du menu (Fonction) jusqu\'à « Decode1 »', ['math', 'soft1']], ['2e touche (Decode) : ON', ['soft2']], ['3e touche (Decoder) : choisis le protocole', ['soft3']], ['La touche ▼ en bas à droite de l\'écran affiche la page suivante du menu', []]];
+T['decode-uart'] = [
+  { learn: 'Une liaison <b>UART</b> envoie les octets <b>bit par bit</b>, sur un seul fil : au repos la ligne est à l\'état <b>haut</b> (TTL) ; un <b>bit de start</b> la fait descendre ; viennent 8 bits de données (poids faible d\'abord), puis un <b>bit de stop</b> à l\'état haut. Chaque bit dure <b>1 / vitesse</b> : à 9600 bauds, un bit dure 104 µs. En <b>RS-232</b> les niveaux sont inversés et valent ±9 à ±12 V : repos <b>bas</b> (négatif), start <b>haut</b>.', how: RG([['Appuie sur MENU de la zone TRIGGER, puis sur la 1re touche (Type) pour choisir Edge ou RS232', ['trigmenu', 'soft1']], ['Pour Edge : règle la pente (3e touche) et tourne LEVEL pour placer le niveau entre les deux états de la ligne', ['soft3', 'level']], ['MODE : Single pour capturer un seul message ; SCALE horizontal pour voir tout le message', ['mode', 'hscale']], ['Mesure la durée d\'un bit avec les curseurs (Cursor → Manual, Type X)', ['cursor']]]), hint: 'À 9600 bauds : 104 µs ; 19200 : 52 µs ; 38400 : 26 µs. Le niveau de déclenchement se place vers le milieu de l\'excursion : 1,6 V en TTL, 0 V en RS-232.' },
+  { learn: 'Le décodeur analyse <b>ce qui est affiché à l\'écran</b>. Il a besoin de trois réglages justes : la <b>vitesse</b> (sinon les bits sont lus au mauvais moment), le <b>seuil</b> (la tension qui sépare « 0 » de « 1 ») et la <b>polarité</b> (repos haut ou bas). Au départ le seuil vaut <b>0 V</b> : pour une ligne 0 / 3,3 V, elle paraît toujours « haute ».', how: RG(decMenu.concat([['Page 1 : TX = CH1 (4e touche) · Polarity (6e touche) : Normal en TTL, Invert en RS-232', ['soft4', 'soft6']], ['Page 2 : Baud (la vitesse), Data Bits 8, Stop Bit 1, Parity None', ['soft2']], ['Page 3 : TX Threshold : tourne le bouton multifonction (1,6 V en TTL, 0 V en RS-232) · Format : ASCII', ['mf']]])), hint: 'Aide-toi du texte affiché sur la bande « D1 RS232 » : des caractères étranges = vitesse ou seuil faux ; rien du tout = seuil ou polarité faux.' },
+  { learn: 'La <b>table d\'événements</b> liste les octets décodés dans l\'ordre, avec leur instant et les erreurs éventuelles. En format <b>ASCII</b> on lit le texte ; en <b>Hex</b> on lit les codes (« H » = 0x48, « e » = 0x65…).', how: RG([['MATH → Decode1, page 3 : BusStatus ON, puis Event Table ON', ['math', 'soft5']], ['Change le Format : Hex pour les codes, ASCII pour le texte', []]]), hint: 'Tu peux vérifier : le code ASCII de « A » est 0x41, celui de « a » 0x61, celui de « 0 » 0x30.' }
+];
+T['decode-i2c'] = [
+  { learn: 'Le bus <b>I²C</b> a <b>deux fils</b> : <b>SCL</b> (horloge, donnée par le maître) et <b>SDA</b> (données). Les deux sont au repos à l\'état haut. Une trame commence par un <b>START</b> (SDA descend alors que SCL est haute) et se termine par un <b>STOP</b> (SDA monte alors que SCL est haute). Entre deux, on envoie des octets : <b>8 bits + 1 bit d\'acquittement (ACK)</b> que le composant met à 0 pour répondre.', how: RG([['Appuie sur MENU de la zone TRIGGER, 1re touche (Type) : I2C', ['trigmenu', 'soft1']], ['Choisis SCL = CH1, SDA = CH2, When = Start (touches suivantes) ; LEVEL vers 1,6 V', ['level']], ['SCALE horizontal pour voir toute la trame (≈ 100 µs/div)', ['hscale']], ['MODE : Single pour figer la trame', ['mode']]]), hint: 'SCL à 100 kHz : une période dure 10 µs.' },
+  { learn: 'Le décodeur I²C a besoin des <b>deux lignes</b> et d\'un <b>seuil pour chacune</b>. Il repère le Start, lit SDA à chaque front montant de SCL, assemble les octets par 8 et lit le 9e bit (ACK).', how: RG(decMenu.concat([['Page 1 : SCL = CH1 (4e touche) · SDA = CH2 (5e touche)', ['soft4', 'soft5']], ['Page 2 : SCL Threshold et SDA Threshold (bouton multifonction) : 1,6 V', ['mf']]])), hint: 'Si rien ne s\'affiche : vérifie que les deux voies sont allumées, que la trame est entière à l\'écran et que les seuils ne sont pas à 0 V.' },
+  { learn: 'Le premier octet contient l\'<b>adresse du composant sur 7 bits</b>, suivie d\'un bit <b>R/W</b> (0 = écriture, 1 = lecture). Le décodeur affiche l\'adresse (ex. 3C) et le sens. Un <b>ACK</b> (SDA basse au 9e bit) signifie « j\'ai reçu » ; un <b>NACK</b> signifie que le composant est absent ou occupé.', how: RG([['Event Table ON (page 3 du menu) pour lire adresse, données et ACK', ['soft5']], ['Format Hex pour l\'adresse et les octets', []]]), hint: 'Exemple : octet 0x78 envoyé = adresse 0x3C (0x78 ÷ 2) en écriture.' }
+];
+T['decode-spi'] = [
+  { learn: 'Le bus <b>SPI</b> utilise quatre fils : <b>SCLK</b> (horloge), <b>MOSI</b> (maître → esclave), <b>MISO</b> (esclave → maître) et <b>CS</b> (sélection, actif <b>bas</b>). Une trame dure tant que CS est bas ; à chaque front montant de SCLK (mode 0), un bit de MOSI et un bit de MISO sont échangés <b>simultanément</b>.', how: RG([['Appuie sur MENU de la zone TRIGGER, 1re touche (Type) : SPI, puis CS = CH3', ['trigmenu', 'soft1']], ['Ou en Edge : source CH3, pente descendante, LEVEL vers 1,6 V', ['level']], ['SCALE horizontal vers ≈ 100 µs/div pour voir la trame', ['hscale']], ['Single pour figer la trame', ['single']]]), hint: 'Compte les fronts montants de SCLK : 8 par octet.' },
+  { learn: 'Le décodeur SPI demande les <b>quatre lignes</b> (MISO est facultative), le <b>sens du CS</b>, le <b>front d\'échantillonnage</b> de SCLK, le <b>nombre de bits</b> par mot et l\'<b>ordre des bits</b> (MSB d\'abord ici). Et un seuil par ligne.', how: RG(decMenu.concat([['Page 1 : SCLK = CH1, MOSI = CH2, MISO = CH4, CS = CH3', ['soft2']], ['Page 2 : CS Polarity Low, SCLK Slope ↗, Data Bits 8, Endian MSB', ['soft4']], ['Page 3 : les quatre seuils (SCLK, MOSI, MISO, CS) à 1,6 V', ['mf']]])), hint: 'Si les octets sont décalés ou inversés : vérifie le front de SCLK et l\'ordre des bits.' },
+  { learn: 'Chaque mot décodé montre <b>MOSI / MISO</b> : ce que dit le maître et ce que répond l\'esclave au même instant. Dans un échange réel avec une mémoire flash, le maître envoie une commande (par ex. 0x9F = lire l\'identifiant), l\'esclave répond ensuite avec les octets d\'identification.', how: RG([['Event Table ON pour la liste des octets', []], ['Format Hex', []]]), hint: 'Le premier octet de MISO est souvent sans signification : l\'esclave répond après avoir reçu la commande.' }
+];
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -2258,10 +2624,11 @@ const $ = s => document.querySelector(s);
 const App = OL.App = { dev: 'owon', scope: null, ui: null, bench: null, tp: null, seed: 1, rnd: null, tpui: null };
 
 App.makeBench = function () {
-  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}), noisy: OL.NoisySignal({}) };
+  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}), noisy: OL.NoisySignal({}), uart: OL.UartSource({}), i2c: OL.I2CSource({}), spi: OL.SPISource({}) };
 };
 /* construit un appareil + une paillasse ; tp = null pour le mode libre */
 App.build = function (dev, tp, seed) {
+  if (tp && tp.devices && tp.devices.indexOf(dev) < 0) { tp = null; App.pendingNote = 'Ce TP utilise le décodeur série du RIGOL : l\'OWON n\'en possède pas.'; }
   App.dev = dev; App.tp = tp || null; App.seed = seed || 1; const P = OL.PROFILES[dev];
   App.bench = App.makeBench(); App.bench.comp = OL.ProbeComp(P.compVpp); App.rnd = OL.rng(App.seed);
   const box = $('#scopeBox'); box.innerHTML = '';
@@ -2277,7 +2644,7 @@ App.build = function (dev, tp, seed) {
   App.benchUI = new OL.Bench($('#benchPop'), App, tp && tp.only ? { only: tp.only } : {});
   App.fit();
 };
-App.startTP = function (tp, seed) { App.build(App.dev, tp, seed); };
+App.startTP = function (tp, seed) { if (tp.devices && tp.devices.indexOf(App.dev) < 0) App.dev = tp.devices[0]; App.build(App.dev, tp, seed); };
 App.free = function (keepList) { App.build(App.dev, null, 1); if (!keepList) App.tpui.list(); };
 App.fit = function () {
   if (!App.ui) return; const w = $('#scopeWrap').clientWidth, bw = App.ui.box.offsetWidth, bh = App.ui.box.offsetHeight, k = Math.min(1.6, w / bw, g.innerWidth > 1250 ? (g.innerHeight - 140) / bh : 9);
@@ -2296,7 +2663,7 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 g.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#devSeg button').forEach(b => b.addEventListener('click', () => { App.build(b.dataset.d, App.tp, App.seed); if (App.tp) App.tpui.render(); }));
+  document.querySelectorAll('#devSeg button').forEach(b => b.addEventListener('click', () => { App.build(b.dataset.d, App.tp, App.seed); if (App.tp) App.tpui.render(); else if (App.pendingNote) { App.tpui.list(); const n = document.createElement('div'); n.className = 'card'; n.style.borderColor = '#ffb020'; n.textContent = '⚠ ' + App.pendingNote; document.getElementById('tpPane').prepend(n); App.pendingNote = null; } }));
   g.addEventListener('resize', () => App.fit());
   const pop = $('#benchPop'); const show = k => { pop.classList.toggle('open', !!k); pop.querySelectorAll(':scope > div').forEach(d => { d.style.display = d.dataset.p === k ? '' : 'none'; }); document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.classList.toggle('pri', b.dataset.p === k)); App.pop = k; };
   document.querySelectorAll('#benchBar button[data-p]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); show(App.pop === b.dataset.p ? null : b.dataset.p); }));

@@ -42,7 +42,7 @@ OL.TPUI.prototype.list = function () {
   const ls = E('button', 'btn pri', top, null, '📖 Les bases de l\'oscilloscope (à lire avant le TP 1)'); ls.addEventListener('click', () => T.lessons());
   const f = E('button', 'btn', top, null, 'Mode libre (tous les montages)');  f.addEventListener('click', () => { T.App.free(); });
   const L = E('div', 'tplist', c);
-  OL.TPS.forEach(tp => { const b = E('button', 'btn' + (T.done[tp.id] ? ' done' : ''), L, null, '<b>' + tp.n + '.</b> ' + tp.title + ' <span class="hint">— ' + tp.level + '</span>'); b.addEventListener('click', () => T.open(tp)); });
+  OL.TPS.forEach(tp => { const b = E('button', 'btn' + (T.done[tp.id] ? ' done' : ''), L, null, '<b>' + tp.n + '.</b> ' + tp.title + ' <span class="hint">— ' + tp.level + (tp.devices ? ' · RIGOL uniquement' : '') + '</span>'); b.addEventListener('click', () => T.open(tp)); });
   E('div', 'hint', c, null, 'Chaque TP règle le banc d\'essai pour toi. Les cases se cochent toutes seules quand l\'oscilloscope est bien réglé ; les questions se corrigent automatiquement.');
 };
 OL.TPUI.prototype.lessons = function () {
@@ -86,13 +86,14 @@ OL.TPUI.prototype.render = function () {
     (s.checks || []).forEach((ck, k) => { const row = E('div', 'chk', d, null, '<i>○</i><span>' + (typeof ck.label === 'function' ? ck.label(ctx) : ck.label) + '</span>'); T.checkEls.push({ row, ck, si }); });
     (s.questions || []).forEach((q, k) => {
       const id = tp.id + '.' + si + '.' + k, row = E('div', 'qrow', d); const lab = typeof q.label === 'function' ? q.label(ctx) : q.label; E('span', '', row, null, OL.tex(lab));
-      let inp; if (q.opts) { inp = E('select', '', row); E('option', '', inp, null, '— choisir —').value = ''; q.opts.forEach((o, i) => E('option', '', inp, null, o).value = i); } else { inp = E('input', '', row); inp.type = 'text'; inp.placeholder = q.unit || ''; inp.inputMode = 'decimal'; }
+      let inp; if (q.opts) { inp = E('select', '', row); E('option', '', inp, null, '— choisir —').value = ''; q.opts.forEach((o, i) => E('option', '', inp, null, o).value = i); } else { inp = E('input', '', row); inp.type = 'text'; inp.placeholder = q.unit || ''; inp.inputMode = q.str ? 'text' : 'decimal'; if (q.str) inp.style.width = '170px'; }
       if (q.unit && !q.opts) E('span', 'hint', row, null, q.unit);
       const btn = E('button', 'btn', row, null, 'Vérifier'); const res = E('span', 'res', row);
       if (T.q[id]) { inp.value = T.q[id].v; res.textContent = T.q[id].t; res.className = 'res ' + (T.q[id].ok ? 'ok' : 'bad'); }
       btn.addEventListener('click', () => {
         const ans = typeof q.ans === 'function' ? q.ans(T.ctx = OL.tpContext(T.App, T.App.rnd)) : q.ans; let ok, txt;
         if (q.opts) { ok = inp.value !== '' && +inp.value === ans; txt = ok ? '✓ Juste' : (inp.value === '' ? 'Choisis une réponse' : '✗ Pas tout à fait'); }
+        else if (q.str) { const norm = s => String(s).toUpperCase().replace(/\s+/g, ' ').replace(/[^A-Z0-9 ]/g, '').trim(); ok = norm(inp.value) === norm(ans) && (inp.value.trim() !== '' || String(ans) === ''); txt = ok ? '✓ Juste' : (inp.value.trim() === '' ? 'Écris ta réponse (laisse vide s\'il n\'y a rien)' : '✗ Pas tout à fait : relis le décodage'); }
         else { const v = parseNum(inp.value); ok = okNum(v, ans, q); txt = ok ? '✓ Juste' : (isFinite(v) ? '✗ ' + (q.hint || 'Pas tout à fait : revérifie ta lecture et l\'unité') : 'Entre un nombre'); }
         if (!ok && q.show) txt += ' (attendu ≈ ' + (q.show(ans)) + ')';
         T.q[id] = { v: inp.value, ok, t: txt }; res.textContent = txt; res.className = 'res ' + (ok ? 'ok' : 'bad'); T.score(); });

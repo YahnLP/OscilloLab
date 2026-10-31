@@ -163,4 +163,58 @@ OL.NoisySignal = function (o) {
   Object.defineProperty(s, 'noiseRms', { get: () => s.noise });
   return s;
 };
+
+/* ---------- Liaison série UART / RS-232 : messages répétés ---------- */
+OL.UartSource = function (o) {
+  const s = Object.assign({ kind: 'uart', name: 'Liaison série UART', baud: 9600, text: 'Hello', reply: 'OK', databits: 8, parity: 'none', stop: 1, level: 'ttl', vhigh: 3.3, period: 0.08, lsb: true }, o);
+  const par = (v) => { let n = 0; for (let i = 0; i < s.databits; i++) n += (v >> i) & 1; return s.parity === 'even' ? n & 1 : (n & 1) ^ 1; };
+  s.bitsOf = ch => { const v = ch.charCodeAt(0) & ((1 << s.databits) - 1), b = [0]; for (let i = 0; i < s.databits; i++) b.push(s.lsb ? (v >> i) & 1 : (v >> (s.databits - 1 - i)) & 1); if (s.parity !== 'none') b.push(par(v)); for (let i = 0; i < Math.ceil(s.stop); i++) b.push(1); return b; };
+  s.frameBits = txt => [].concat(...Array.from(txt).map(s.bitsOf));
+  s.Tb = () => 1 / s.baud;
+  s.msgTime = txt => s.frameBits(txt).length * s.Tb();
+  s.periodEff = () => Math.max(s.period, 3 * (s.msgTime(s.text) + s.msgTime(s.reply)));
+  const volt = (b) => s.level === 'rs232' ? (b ? -9 : 9) : (b ? s.vhigh : 0);
+  const gen = (txt, off) => t => { const P = s.periodEff(), u = ((t % P) + P) % P - off, tb = s.Tb(), bits = s.frameBits(txt); if (u < 0 || u >= bits.length * tb) return volt(1); return volt(bits[Math.floor(u / tb)]); };
+  let cache = {}; const memo = (k, f) => t => { const key = k + s.text + s.reply + s.baud + s.databits + s.parity + s.stop + s.lsb + s.level + s.period; if (!cache[key]) { cache = {}; cache[key] = { bits: { tx: s.frameBits(s.text), rx: s.frameBits(s.reply) } }; } return f(t, cache[key].bits[k]); };
+  s.nodes = {
+    tx: { label: 'TX (émission)', fn: memo('tx', (t, bits) => { const P = s.periodEff(), u = ((t % P) + P) % P, tb = s.Tb(); return u < bits.length * tb ? volt(bits[Math.floor(u / tb)]) : volt(1); }) },
+    rx: { label: 'RX (réception)', fn: memo('rx', (t, bits) => { const P = s.periodEff(), off = P / 2, u = (((t % P) + P) % P) - off, tb = s.Tb(); return u >= 0 && u < bits.length * tb ? volt(bits[Math.floor(u / tb)]) : volt(1); }) }
+  };
+  s.fhint = () => s.baud / 2;
+  return s;
+};
+/* ---------- Bus I2C : SCL et SDA ---------- */
+OL.I2CSource = function (o) {
+  const s = Object.assign({ kind: 'i2c', name: 'Bus I²C', fscl: 100e3, addr: 0x3C, read: false, data: [0xA5, 0x3C], ack: true, vhigh: 3.3, period: 0.01 }, o);
+  s.bytes = () => s.ack ? [(s.addr << 1) | (s.read ? 1 : 0)].concat(s.data) : [(s.addr << 1) | (s.read ? 1 : 0)];
+  s.total = () => s.bytes().length * 9 / s.fscl + 4 / s.fscl;
+  const state = u => {
+    const T = 1 / s.fscl, h = T / 2, t0 = 2 * h, by = s.bytes(), nb = by.length * 9;
+    if (u < t0) return [1, 1]; if (u < t0 + h) return [1, 0];
+    const ub = u - (t0 + h), tot = nb * T;
+    if (ub < tot) { const k = Math.floor(ub / T), ph = ub - k * T, bi = Math.floor(k / 9), b = k % 9; const sda = b < 8 ? (by[bi] >> (7 - b)) & 1 : (s.ack ? 0 : 1); return [ph < h ? 0 : 1, sda]; }
+    const ue = ub - tot; if (ue < h) return [0, 0]; if (ue < 2 * h) return [1, 0]; return [1, 1];
+  };
+  const at = k => t => { const P = Math.max(s.period, 2 * s.total()), u = ((t % P) + P) % P; return state(u)[k] ? s.vhigh : 0; };
+  s.nodes = { scl: { label: 'SCL (horloge)', fn: at(0) }, sda: { label: 'SDA (données)', fn: at(1) } };
+  s.fhint = () => s.fscl / 2;
+  return s;
+};
+/* ---------- Bus SPI mode 0 : SCLK, MOSI, MISO, CS ---------- */
+OL.SPISource = function (o) {
+  const s = Object.assign({ kind: 'spi', name: 'Bus SPI', fclk: 100e3, mosi: [0x9F, 0xA5, 0x3C], miso: [0x00, 0x1E, 0x7B], vhigh: 3.3, period: 0.01 }, o);
+  const state = u => {
+    const T = 1 / s.fclk, h = T / 2, tc = T, n = s.mosi.length * 8;
+    if (u < tc) return { cs: 1, clk: 0, mo: 0, mi: 0 };
+    const ub = u - (tc + h), tot = n * T;
+    if (ub < 0) return { cs: 0, clk: 0, mo: (s.mosi[0] >> 7) & 1, mi: (s.miso[0] >> 7) & 1 };
+    if (ub < tot) { const k = Math.floor(ub / T), ph = ub - k * T, by = Math.floor(k / 8), b = k % 8; return { cs: 0, clk: ph < h ? 0 : 1, mo: (s.mosi[by] >> (7 - b)) & 1, mi: (s.miso[by] >> (7 - b)) & 1 }; }
+    if (ub < tot + h) return { cs: 0, clk: 0, mo: 0, mi: 0 };
+    return { cs: 1, clk: 0, mo: 0, mi: 0 };
+  };
+  const at = k => t => { const P = Math.max(s.period, 3 * (s.mosi.length * 8 + 3) / s.fclk), u = ((t % P) + P) % P; const st = state(u); return st[k] ? s.vhigh : 0; };
+  s.nodes = { sclk: { label: 'SCLK (horloge)', fn: at('clk') }, mosi: { label: 'MOSI', fn: at('mo') }, miso: { label: 'MISO', fn: at('mi') }, cs: { label: 'CS (sélection)', fn: at('cs') } };
+  s.fhint = () => s.fclk / 2;
+  return s;
+};
 })(typeof window !== 'undefined' ? window : globalThis);

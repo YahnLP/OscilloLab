@@ -12,7 +12,7 @@ const file = 'file://' + path.resolve(process.argv[2] || path.join(__dirname, '.
     for (const dev of ['owon', 'rigol']) for (const tp of OL.TPS) {
       OL.App.build(dev, null, 1); OL.App.tpui.open(tp); await new Promise(r => setTimeout(r, 450));
       const ctx = OL.tpContext(OL.App, OL.App.rnd); const bad = [];
-      tp.steps.forEach((s, si) => { if (typeof s.html === 'function') s.html(ctx); (s.checks || []).forEach(c => { try { c.ok(ctx); if (typeof c.label === 'function') c.label(ctx); } catch (e) { bad.push('check ' + si + ': ' + e.message); } }); (s.questions || []).forEach(q => { try { const a = typeof q.ans === 'function' ? q.ans(ctx) : q.ans; if (!isFinite(a)) bad.push('réponse non numérique ' + si); } catch (e) { bad.push('ans ' + si + ': ' + e.message); } }); });
+      tp.steps.forEach((s, si) => { if (typeof s.html === 'function') s.html(ctx); (s.checks || []).forEach(c => { try { c.ok(ctx); if (typeof c.label === 'function') c.label(ctx); } catch (e) { bad.push('check ' + si + ': ' + e.message); } }); (s.questions || []).forEach(q => { try { const a = typeof q.ans === 'function' ? q.ans(ctx) : q.ans; if (!q.str && !isFinite(a)) bad.push('réponse non numérique ' + si); } catch (e) { bad.push('ans ' + si + ': ' + e.message); } }); });
       const txt = document.getElementById('tpPane').innerText; if (/\$|\\\\|undefined|NaN/.test(txt)) bad.push('texte suspect: ' + (txt.match(/.{0,20}(\$|\\\\|undefined|NaN).{0,20}/) || [''])[0]);
       out.push({ dev, id: tp.id, bad });
     }

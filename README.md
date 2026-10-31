@@ -6,7 +6,7 @@ Simulateur **hors ligne** (HTML/CSS/JS pur, aucune dépendance), dans l'esprit d
 
 - Deux faces avant interactives : **OWON SDS5032E(V)** (2 voies, 30 MHz, 250 MS/s, 10 k points) et **RIGOL DS1054Z / Plus** (4 voies, 100 MHz, 1 GSa/s, 24 Mpts).
 - Une **paillasse** : générateur de fonctions, sortie de compensation de l'appareil, pont de diodes (avec filtrage), NE555, charge/décharge d'un condensateur, filtre RC (déphasage), bouton poussoir avec rebonds, alimentation continue.
-- **17 TP** pensés pour l'examen : sonde, réglages, mesures, curseurs, déphasage…
+- **20 TP** pensés pour l'examen : sonde, réglages, mesures, curseurs, déphasage…
 - Une **partie pédagogique** dans chaque TP : *À savoir* (la notion expliquée avant de s'en servir), *Pas à pas* touche par touche **pour l'appareil choisi** avec un bouton **👆 Montre-moi** (la commande clignote sur la face avant) et *Un coup de pouce*. Un mini-cours **« Les bases de l'oscilloscope »** précède le TP 1.
 
 ## Lancer
@@ -34,6 +34,9 @@ Ouvrir `dist/oscillolab.html` (fichier unique, fonctionne sans réseau) **ou** `
 | 15 | Réduire le bruit : la moyenne | avancé | sonde ×1, petite sensibilité, mode Average |
 | 16 | La pince de masse oubliée | débutant | reconnaître un parasite de 50 Hz |
 | 17 | Le bruit : le reconnaître et l'atténuer | avancé | limite 20 MHz, rejet HF du déclenchement, moyennage / High Res, sensibilité |
+| 18 | Décoder une liaison série UART / RS-232 *(RIGOL)* | avancé | vitesse, seuil, polarité, ASCII / Hex, table d'événements |
+| 19 | Décoder un bus I²C *(RIGOL)* | avancé | Start, adresse 7 bits, R/W, données, ACK / NACK |
+| 20 | Décoder un bus SPI *(RIGOL)* | avancé | CS, SCLK, MOSI / MISO, front d'échantillonnage, MSB / LSB |
 
 Chaque TP : objectif, étapes, **cases cochées automatiquement** quand l'appareil est réglé comme il faut, **questions corrigées** (numériques avec tolérance, QCM). « ↻ Nouveau signal » tire d'autres valeurs. La progression est mémorisée dans le navigateur.
 
@@ -52,13 +55,14 @@ Voir [`docs/fidelite.md`](docs/fidelite.md) pour le détail. En bref :
 npm test                       # moteur (Node) + interface (Playwright) sur dist/
 node tests/engine.test.js      # moteur seul : compensation, piège ×10, Autoset, déclenchement, NE555, pont, déphasage, Single, peak detect
 node tools/build.js            # génère dist/oscillolab.html
-node tests/ui.test.js          # ouvre les 17 TP sur les 2 appareils, résout le TP 1 comme un élève, captures
+node tests/ui.test.js          # ouvre les 20 TP sur les 2 appareils, résout le TP 1 comme un élève, captures
 ```
 Arborescence : `js/signals.js` (sources) · `js/scope.js` (moteur) · `js/measure.js` · `js/autoset.js` · `js/profiles.js` (caractéristiques des deux appareils) · `js/ui_owon.js`, `js/ui_rigol.js` (faces avant et écrans) · `js/bench.js` (paillasse) · `js/tp.js` + `js/tps_a.js`, `js/tps_b.js` (TP) · `js/app.js`.
 
 ## Limites connues (à valider avec les appareils)
 Les menus du RIGOL suivent le **manuel officiel DS1000Z** (listes de mesures, mémoire, déclenchement, boutons) et la photo de votre DS1054Z ; ceux de l'OWON suivent vos fiches, la photo et la fiche technique. Le simulateur n'ajoute **aucune fonction qui n'existe pas** sur les appareils, mais n'en simule pas encore certaines :
-- **RIGOL :** déclenchements autres que sur front (menu présent, avec message), base de temps retardée (appui sur SCALE horizontal), FFT et fonctions mathématiques autres que A+B, A−B, A×B, A/B, statistiques de mesure, curseurs Auto et XY, REF, enregistrement, Pass/Fail, décodage série (option payante sur l'appareil), voies logiques (absentes du DS1054Z).
+- **RIGOL :** déclenchements autres que Edge, RS232, I2C et SPI (menu présent, avec message), conditions de déclenchement série autres que Start / Stop / CS, décodage parallèle, base de temps retardée (appui sur SCALE horizontal), FFT et fonctions mathématiques autres que A+B, A−B, A×B, A/B, statistiques de mesure, curseurs Auto et XY, REF, enregistrement, Pass/Fail, voies logiques (absentes du DS1054Z).
+- **Décodeur série du RIGOL (TP 18 à 20) :** c'est une **option logicielle (SA-DS1000Z)** sur le DS1054Z : à vérifier sur votre appareil. Menu simulé d'après le manuel DS1000Z : **MATH → Decode1 / Decode2**, décodeurs RS232, I2C, SPI, seuils réglables (0 V par défaut), format Hex / ASCII / Decimal / Binary, BusStatus, table d'événements. Il analyse **ce qui est affiché à l'écran**. L'OWON n'a pas de décodeur.
 - **OWON :** entrée EXT, FFT, déclenchements Pulse / Video / Slope / Alternate, mode Scan particulier, sauvegarde de traces.
 - **Ni l'un ni l'autre :** réglage de la luminosité de l'écran, langue de l'interface.
 

@@ -28,7 +28,7 @@ SP.defaultSetup = function () {
     run: true, single: false,
     tdivIdx: OL.nearest(P.tdivs, 1e-3), hdelay: 0,
     ch: [], acq: 'sample', avgN: 16, dots: false, persist: 0, xy: false,
-    trig: { src: 0, slope: 'rise', level: 0, mode: 'auto', coup: 'dc', holdoff: 100e-9, sweepForce: false },
+    trig: { type: 'edge', pr: { src: 0, pol: 'normal', baud: 9600, scl: 0, sda: 1, when: 'start', cs: 0, csHigh: false }, src: 0, slope: 'rise', level: 0, mode: 'auto', coup: 'dc', holdoff: 100e-9, sweepForce: false },
     math: { on: false, op: 'a-b' }, xyPair: [0, 1], mem: 'auto', roll: false, measure: [], cursors: { mode: 'off', x: [-2, 2], y: [-2, 2], src: 0 }, sel: 0
   };
   for (let i = 0; i < P.nch; i++) this.st.ch.push({
@@ -129,6 +129,7 @@ SP.findTrigger = function (tStart, span) {
     const T = 0.02, up = Math.ceil(tStart / T) * T, dn = Math.ceil((tStart - T / 2) / T) * T + T / 2;
     return t.slope === 'fall' ? dn : t.slope === 'both' ? Math.min(up, dn) : up;
   }
+  if (t.type && t.type !== 'edge') return this.findProtoTrigger(tStart, span);
   const nd = this.nodeOf(i);
   if (!nd || !st.ch[i].on && false) return null;
   const f = nd.src.fhint ? nd.src.fhint() : 1e3;
@@ -161,6 +162,26 @@ SP.findTrigger = function (tStart, span) {
   return null;
 };
 
+/* déclenchement sur protocole : RS232 (bit de start), I2C (Start / Stop), SPI (CS actif) */
+SP.findProtoTrigger = function (tStart, span) {
+  const st = this.st, t = st.trig, pr = t.pr, ty = t.type;
+  const chs = ty === 'rs232' ? [pr.src] : ty === 'i2c' ? [pr.scl, pr.sda] : [pr.cs];
+  const nds = chs.map(i => this.nodeOf(i)); if (nds.some(n => !n)) return null;
+  const f = Math.max(...nds.map(n => (n.src.fhint ? n.src.fhint() : 1e3))), dt = Math.max(1e-9, Math.min(1 / (40 * f), this.window() / 1500, span / 20));
+  const lv = chs.map(i => t.level / st.ch[i].probe), pre = this.preTime(chs[0]), block = 4096, Tb = ty === 'rs232' ? 1 / pr.baud : 0;
+  let tt = tStart, scanned = 0, steps = 300000, hi = 0, prevA = null, prevB = null;
+  while (scanned < span && steps > 0) {
+    const g = timeGrid(tt, dt, block, scanned === 0 ? pre : 0), Y = chs.map(i => this.front(i, g.ts));
+    for (let k = g.m; k < g.ts.length; k++) {
+      const a = Y[0][k] > lv[0], b = Y[1] ? Y[1][k] > lv[1] : false;
+      if (ty === 'rs232') { const L = pr.pol === 'invert' ? !a : a; if (L) hi += dt; else { if (prevA === true && hi >= 0.9 * Tb) return g.ts[k]; hi = 0; } prevA = L; }
+      else if (ty === 'i2c') { if (prevB !== null && a && prevA) { if (pr.when === 'start' && prevB && !b) return g.ts[k]; if (pr.when === 'stop' && !prevB && b) return g.ts[k]; } prevA = a; prevB = b; }
+      else { const act = pr.csHigh ? a : !a; if (prevA !== null && act && !prevA) return g.ts[k]; prevA = act; }
+    }
+    tt += block * dt; scanned += block * dt; steps -= block;
+  }
+  return null;
+};
 /* ----- acquisition ----- */
 SP.acquire = function (tLeft) {
   const st = this.st, P = this.P, w = this.window();

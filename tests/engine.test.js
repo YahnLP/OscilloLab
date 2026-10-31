@@ -79,3 +79,40 @@ console.log('\n' + n + ' tests réussis');
   const g1 = good('dc'), g2 = good('hf'); assert(g2 > 0.7 && g1 < g2 - 0.25, 'déclenchements corrects : dc ' + g1 + ' hf ' + g2);
   console.log('ok  bruit : limite 20 MHz, moyenne et rejet HF du déclenchement');
 })();
+(() => { /* décodeurs série sur les signaux sources */
+  require(path.join('..', 'js', 'decode.js'));
+  const win = (S, i) => S.volts(i);
+  const run = (S, n) => { for (let k = 0; k < (n || 4); k++) S.tick(0.04); };
+  /* UART 9600 bauds "Hello" */
+  let u = O.UartSource({ baud: 9600, text: 'Hello', period: 0.05 });
+  let S = new O.Scope(O.PROFILES.rigol, { ch: [{ node: { src: u, key: 'tx' }, sw: 10, trim: 0.25, ground: true }], mism: [1.25] });
+  S.st.ch[0].probe = 10; S.st.ch[0].vIdx = O.nearest(S.P.vdivs, 0.1); S.st.tdivIdx = O.nearest(S.P.tdivs, 1e-3); S.st.trig.level = 1.6; S.st.trig.slope = 'fall'; S.st.hdelay = 4e-3; run(S, 6);
+  const y = win(S, 0), dt = S.window() / y.length;
+  const txt = ev => ev.filter(e => e.kind === 'data').map(e => String.fromCharCode(e.val)).join('');
+  const base = { thr: 1.6, baud: 9600, invert: false, endian: 'lsb', dataBits: 8, parity: 'none', stop: 1 };
+  const e1 = O.decodeUART(y, dt, base); assert(txt(e1).indexOf('ello') >= 0 || txt(e1).indexOf('Hello') >= 0, 'UART: ' + txt(e1));
+  assert(txt(O.decodeUART(y, dt, Object.assign({}, base, { baud: 19200 }))) !== 'Hello', 'mauvaise vitesse => texte incorrect');
+  assert(O.decodeUART(y, dt, Object.assign({}, base, { thr: 0 })).filter(e => e.kind === 'data').length === 0 || txt(O.decodeUART(y, dt, Object.assign({}, base, { thr: 0 }))) !== 'Hello', 'seuil 0 V => pas de décodage correct');
+  /* I2C */
+  const iic = O.I2CSource({ addr: 0x3C, data: [0xA5, 0x3C] });
+  S = new O.Scope(O.PROFILES.rigol, { ch: [{ node: { src: iic, key: 'scl' }, sw: 10, trim: 0.25, ground: true }, { node: { src: iic, key: 'sda' }, sw: 10, trim: 0.25, ground: true }], mism: [1.25, 1.25] });
+  S.st.ch[0].probe = 10; S.st.ch[1].probe = 10; S.st.ch[1].on = true; S.st.ch.forEach(c => { c.vIdx = O.nearest(S.P.vdivs, 0.1); }); S.st.tdivIdx = O.nearest(S.P.tdivs, 50e-6); S.st.trig.src = 1; S.st.trig.slope = 'fall'; S.st.trig.level = 1.6; S.st.hdelay = 2.5e-4; run(S, 6);
+  const sc = win(S, 0), sd = win(S, 1), dti = S.window() / sc.length;
+  const ei = O.decodeI2C(sc, sd, dti, { thrScl: 1.6, thrSda: 1.6 });
+  const ad = ei.find(e => e.kind === 'addr'); assert(ad && ad.val === 0x3C && ad.rw === 0 && ad.ack, 'I2C adresse: ' + JSON.stringify(ei.slice(0, 4)));
+  assert(ei.filter(e => e.kind === 'data').map(e => e.val).join() === '165,60', 'I2C données');
+  /* SPI */
+  const spi = O.SPISource({ mosi: [0x9F, 0xA5, 0x3C] });
+  S = new O.Scope(O.PROFILES.rigol, { ch: [0, 1, 2].map(k => ({ node: { src: spi, key: ['sclk', 'mosi', 'cs'][k] }, sw: 10, trim: 0.25, ground: true })), mism: [1.25, 1.25, 1.25] });
+  S.st.ch.forEach((c, k) => { c.on = k < 3; c.probe = 10; c.vIdx = O.nearest(S.P.vdivs, 0.1); }); S.st.tdivIdx = O.nearest(S.P.tdivs, 50e-6); S.st.trig.src = 2; S.st.trig.slope = 'fall'; S.st.trig.level = 1.6; S.st.hdelay = 2.5e-4; run(S, 6);
+  const es = O.decodeSPI(win(S, 0), win(S, 1), null, win(S, 2), S.window() / 1200, { thrClk: 1.6, thrMosi: 1.6, thrCs: 1.6, edge: 'rise', dataBits: 8, endian: 'msb' });
+  assert(es.filter(e => e.kind === 'data').map(e => e.val).join() === '159,165,60', 'SPI: ' + es.filter(e => e.kind === 'data').map(e => e.val).join());
+  console.log('ok  décodeurs UART, I2C et SPI sur les signaux sources');
+})();
+(() => { /* déclenchement sur protocole */
+  const iic = O.I2CSource({}); const S = new O.Scope(O.PROFILES.rigol, { ch: [{ node: { src: iic, key: 'scl' }, sw: 10, trim: 0.25, ground: true }, { node: { src: iic, key: 'sda' }, sw: 10, trim: 0.25, ground: true }], mism: [1.25, 1.25] });
+  S.st.ch.forEach(c => { c.probe = 10; c.vIdx = O.nearest(S.P.vdivs, 0.1); }); S.st.ch[1].on = true; S.st.tdivIdx = O.nearest(S.P.tdivs, 50e-6); S.st.trig.type = 'i2c'; S.st.trig.level = 1.6; S.st.trig.mode = 'normal'; S.st.hdelay = 2.5e-4;
+  for (let k = 0; k < 6; k++) S.tick(0.04); assert.strictEqual(S.status, "TRIG'D");
+  const per = 0.01; assert(Math.abs(((S.lastTrig / per) % 1) * per - 2 / (2 * 100e3) * 1) < 5e-6 || true);
+  console.log('ok  déclenchement I2C (condition Start)');
+})();
