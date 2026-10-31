@@ -7,7 +7,7 @@ const $ = s => document.querySelector(s);
 const App = OL.App = { dev: 'owon', scope: null, ui: null, bench: null, tp: null, seed: 1, rnd: null, tpui: null };
 
 App.makeBench = function () {
-  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}) };
+  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}), noisy: OL.NoisySignal({}) };
 };
 /* construit un appareil + une paillasse ; tp = null pour le mode libre */
 App.build = function (dev, tp, seed) {

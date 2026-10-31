@@ -64,3 +64,18 @@ console.log('\n' + n + ' tests réussis');
   const g = O.FuncGen({ freq: 1000, amp: 2 }), c = O.ProbeComp(5); const S = new O.Scope(O.PROFILES.owon, { ch: [{ node: { src: g, key: 'out' }, sw: 10, trim: 0.25, ground: true }, { node: { src: c, key: 'out' }, sw: 10, trim: 0.25, ground: true }], mism: [1.25, 0.85] });
   S.st.ch[0].probe = 10; S.st.ch[1].probe = 10; S.autoset(); assert(S.st.ch[1].on); S.st.ch[1].on = false; S.autoset({ keep: true }); assert.strictEqual(S.st.ch[1].on, false); console.log('ok  Autoscale ne rallume pas une voie éteinte');
 })();
+(() => { /* bruit : bande passante, moyenne, couplage HF du déclenchement */
+  const std = a => { const m = a.reduce((x, y) => x + y, 0) / a.length; return Math.sqrt(a.reduce((x, y) => x + (y - m) * (y - m), 0) / a.length); };
+  const mkn = (dev, o) => { const n = O.NoisySignal(Object.assign({ freq: 10000, amp: 0.2, noise: 0.04 }, o)); const S = new O.Scope(O.PROFILES[dev], { ch: [{ node: { src: n, key: 'out' }, sw: 10, trim: 0.25, ground: true }], mism: [1.25] }); S.st.ch[0].probe = 10; S.autoset(); return S; };
+  const resid = S => { const v = S.volts(0), n = v.length, per = 1200 / (S.window() * 10000); /* écart à la sinusoïde reconstruite */ const m = O.measure(v, S.window() / n); return m.pp; };
+  /* 1. la limite 20 MHz réduit le bruit (RIGOL 50 MHz) */
+  let S = mkn('rigol'); for (let i = 0; i < 3; i++) S.tick(0.04); const pp1 = resid(S); S.st.ch[0].bw20 = true; for (let i = 0; i < 3; i++) S.tick(0.04); const pp2 = resid(S);
+  assert(pp2 < pp1 * 0.95, 'bw20: ' + pp1 + ' -> ' + pp2);
+  /* 2. la moyenne réduit le bruit */
+  S = mkn('owon'); S.st.acq = 'avg'; S.st.avgN = 64; S.st.trig.coup = 'hf'; for (let i = 0; i < 80; i++) S.tick(0.04); const ppa = resid(S); S.st.acq = 'sample'; for (let i = 0; i < 3; i++) S.tick(0.04); const pps = resid(S);
+  assert(ppa < pps * 0.85 && ppa < 0.22, 'avg: ' + pps + ' -> ' + ppa);
+  /* 3. le rejet HF stabilise le déclenchement (gigue plus faible) */
+  const good = coup => { const T = mkn('owon', { amp: 0.2, noise: 0.05 }); T.st.trig.coup = coup; let ok = 0, n = 0; for (let i = 0; i < 60; i++) { T.tick(0.04); if (T.lastTrig) { let ph = (T.lastTrig * 10000) % 1; if (ph > 0.5) ph -= 1; n++; if (Math.abs(ph) < 0.1) ok++; } } return ok / Math.max(1, n); };
+  const g1 = good('dc'), g2 = good('hf'); assert(g2 > 0.7 && g1 < g2 - 0.25, 'déclenchements corrects : dc ' + g1 + ' hf ' + g2);
+  console.log('ok  bruit : limite 20 MHz, moyenne et rejet HF du déclenchement');
+})();

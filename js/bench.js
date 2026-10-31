@@ -32,7 +32,7 @@ OL.Bench = function (parent, App, opts) {
     add(b.ne555, 'out', 'NE555 — sortie (broche 3)'); add(b.ne555, 'cap', 'NE555 — condensateur (broches 2-6)');
     add(b.rc, 'in', 'RC — tension d\'entrée E'); add(b.rc, 'vc', 'RC — tension Uc aux bornes de C');
     add(b.rcf, 'in', 'Filtre RC — entrée Ue'); add(b.rcf, 'out', 'Filtre RC — sortie Us');
-    add(b.push, 'out', 'Bouton poussoir — sortie'); add(b.dc, 'out', 'Alimentation continue');
+    add(b.push, 'out', 'Bouton poussoir — sortie'); add(b.noisy, 'out', 'Capteur bruité — sortie'); add(b.dc, 'out', 'Alimentation continue');
     return l;
   };
   B.find = id => { const [k, key] = id.split('.'); const src = Object.values(App.bench).find(s => s && s.kind === k); return src ? { src, key } : null; };
@@ -73,6 +73,7 @@ OL.Bench.prototype.build = function () {
   mk('RC : charge / décharge', b => { numField(b, 'Résistance R', () => bb.rc.R, v => { bb.rc.R = Math.max(1, v); }, R); numField(b, 'Condensateur C', () => bb.rc.C, v => { bb.rc.C = Math.max(1e-12, v); }, [['nF', 1e-9], ['µF', 1e-6]]); numField(b, 'Tension E', () => bb.rc.E, v => { bb.rc.E = v; }, [['V', 1]]); numField(b, 'Fréquence du carré', () => bb.rc.freq, v => { bb.rc.freq = Math.max(0.01, v); }, Hz); });
   mk('Filtre RC (déphasage)', b => { const r = E('div', 'row', b); const s = E('div', 'seg', r); [['low', 'Passe-bas'], ['high', 'Passe-haut']].forEach(([k, t]) => { const bt = E('button', k === bb.rcf.type ? 'on' : '', s, null, t); bt.addEventListener('click', () => { bb.rcf.type = k; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === bt)); }); }); numField(b, 'R', () => bb.rcf.R, v => { bb.rcf.R = Math.max(1, v); }, R); numField(b, 'C', () => bb.rcf.C, v => { bb.rcf.C = Math.max(1e-12, v); }, [['nF', 1e-9], ['µF', 1e-6]]); numField(b, 'Fréquence', () => bb.rcf.freq, v => { bb.rcf.freq = Math.max(0.1, v); }, Hz); numField(b, 'Amplitude (c-c)', () => bb.rcf.amp, v => { bb.rcf.amp = v; }, [['V', 1]]); });
   mk('Bouton poussoir', b => { const r = E('div', 'row', b); const p = E('button', 'btn pri', r, null, 'Appuyer'); const q = E('button', 'btn', r, null, 'Relâcher'); p.addEventListener('click', () => { bb.push.press((App.scope.scanEnd || App.scope.simT) + 0.003); }); q.addEventListener('click', () => bb.push.release()); const l = E('label', '', r); const cb = E('input', '', l); cb.type = 'checkbox'; cb.checked = bb.push.bounce; cb.addEventListener('change', () => { bb.push.bounce = cb.checked; }); l.append(' avec rebonds'); });
+  mk('Capteur bruité', b => { numField(b, 'Fréquence', () => bb.noisy.freq, v => { bb.noisy.freq = Math.max(1, v); }, Hz); numField(b, 'Amplitude (c-c)', () => bb.noisy.amp, v => { bb.noisy.amp = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); numField(b, 'Bruit (efficace, à 100 MHz)', () => bb.noisy.noise, v => { bb.noisy.noise = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); numField(b, 'Ronflement 50 Hz', () => bb.noisy.hum, v => { bb.noisy.hum = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); });
   mk('Alimentation continue', b => { numField(b, 'Tension', () => bb.dc.v, v => { bb.dc.v = v; }, [['V', 1]]); numField(b, 'Ondulation (c-c)', () => bb.dc.ripple, v => { bb.dc.ripple = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); });
 };
 OL.Bench.prototype.refresh = function () { this.refreshers.forEach(f => f()); };

@@ -348,6 +348,16 @@ OL.PushButton = function (o) {
   s.fhint = () => 1;
   return s;
 };
+/* ---------- Signal bruité : sinus + bruit large bande (+ ronflement 50 Hz éventuel) ----------
+   noise = valeur efficace du bruit pour une bande passante de 100 MHz (le bruit diminue avec la bande passante utilisée) */
+OL.NoisySignal = function (o) {
+  const s = Object.assign({ kind: 'noisy', name: 'Capteur bruité', freq: 10000, amp: 0.2, offset: 0, noise: 0.012, hum: 0 }, o);
+  s.noiseRms = s.noise;
+  s.nodes = { out: { label: 'Sortie du capteur (bruitée)', fn: t => s.offset + 0.5 * s.amp * Math.sin(TAU * s.freq * t) + s.hum * Math.sin(TAU * 50 * t) } };
+  s.fhint = () => s.freq;
+  Object.defineProperty(s, 'noiseRms', { get: () => s.noise });
+  return s;
+};
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script><script>
@@ -488,11 +498,20 @@ function timeGrid(t0, dt, N, pre) {
 }
 SP.preTime = function (i) { const b = this.bench.ch[i]; return (b.sw === 10 ? 20e-6 * 8 : 0) + 3e-6; };
 
+/* ----- bruit d'entrée : proportionnel à la racine de la bande passante réellement utilisée ----- */
+SP.noiseSigma = function (i, forTrigger) {
+  const nd = this.nodeOf(i); if (!nd || !nd.src.noiseRms) return 0;
+  const b = this.bench.ch[i], c = this.st.ch[i], x10 = b.sw === 10, att = x10 ? 0.1 : 1;
+  let bw = Math.min(this.P.bw, x10 ? 100e6 : this.P.bwProbeX1); if (c.bw20 && !forTrigger) bw = Math.min(bw, 20e6);
+  return nd.src.noiseRms * att * Math.sqrt(bw / 100e6);
+};
 /* ----- déclenchement ----- */
 SP.trigSignal = function (ts, shift) {
-  const t = this.st.trig, i = t.src, y = this.front(i, ts);
+  const t = this.st.trig, i = t.src; let y = this.front(i, ts);
   const c = this.st.ch[i], k = c.probe;
   let out = y;
+  const sg = this.noiseSigma(i, true) * (t.coup === 'hf' ? 0.12 : 1);
+  if (sg > 0) { out = new Float64Array(y.length); for (let k = 0; k < y.length; k++) out[k] = y[k] + OL.gauss(this.rand) * sg; y = out; }
   if (t.coup === 'ac') { /* passe-haut ~ 10 Hz : retrait de la moyenne locale */
     const nd = this.nodeOf(i); if (nd) { const m = this.dcMean(nd.src, nd.key) * (this.bench.ch[i].sw === 10 ? 0.1 : 1); out = y.map(v => v - m); }
   }
@@ -509,18 +528,21 @@ SP.findTrigger = function (tStart, span) {
   const f = nd.src.fhint ? nd.src.fhint() : 1e3;
   const dt = Math.max(1e-9, Math.min(1 / (60 * f), this.window() / 1500, span / 20));
   const level = t.level / this.st.ch[i].probe;   /* niveau ramené à l'entrée */
+  const hy = 0.1 * this.baseV(i);                 /* sensibilité du déclenchement : 0,1 carreau */
   const pre = this.preTime(i), block = 4096;
-  let tt = tStart, prev = null, last = -Infinity, scanned = 0, maxSteps = 300000;
+  let tt = tStart, prev = null, last = -Infinity, scanned = 0, maxSteps = 300000, armUp = false, armDn = false;
   const hold = Math.max(t.holdoff, 0);
   while (scanned < span && maxSteps > 0) {
     const g = timeGrid(tt, dt, block, scanned === 0 ? pre : 0), y = this.trigSignal(g.ts);
     const base = g.m;
     for (let k = base; k < y.length; k++) {
       const v = y[k];
+      if (v < level - hy) armUp = true; if (v > level + hy) armDn = true;      /* hystérésis du comparateur : le signal doit d'abord s'éloigner du niveau */
       if (prev !== null) {
-        const up = prev < level && v >= level, dn = prev > level && v <= level;
+        const up = armUp && prev < level && v >= level, dn = armDn && prev > level && v <= level;
         const hit = (t.slope === 'rise' && up) || (t.slope === 'fall' && dn) || (t.slope === 'both' && (up || dn));
         if (hit) {
+          if (up) armUp = false; if (dn) armDn = false;
           const tc = g.ts[k - 1] + (level - prev) / (v - prev) * (g.ts[k] - g.ts[k - 1]);
           if (tc - last >= hold && tc > tStart + 0) return tc;
           /* sinon : dans le temps mort, on ignore */
@@ -547,7 +569,7 @@ SP.acquire = function (tLeft) {
     const F = (st.acq === 'peak' && n > N) ? Math.max(8, Math.min(64, Math.ceil(rec.dt / 0.5e-6))) : (st.acq === 'hires' && n > N ? 8 : 1);
     const g = timeGrid(tLeft, rec.dt / F, N * F, pre), y = this.front(i, g.ts);
     const out = new Float64Array(N), pkm = st.acq === 'peak', mn = F > 1 && pkm ? new Float64Array(N) : null, mx = F > 1 && pkm ? new Float64Array(N) : null;
-    const vk = this.baseV(i), noiseV = 0.0004 + vk * 0.003;
+    const vk = this.baseV(i), sx = this.noiseSigma(i, false), noiseV = Math.sqrt(Math.pow(0.0004 + vk * 0.003, 2) + sx * sx);
     for (let j = 0; j < N; j++) {
       if (F === 1) out[j] = y[g.m + j] + OL.gauss(this.rand) * noiseV;
       else if (!pkm) { let s = 0; for (let q = 0; q < F; q++) s += y[g.m + j * F + q] + OL.gauss(this.rand) * noiseV; out[j] = s / F; }
@@ -585,7 +607,7 @@ SP.tick = function (dtReal) {
   const start = Math.max(this.scanEnd || this.simT, this.simT - 2);   /* le balayage de déclenchement est continu */
   const tt = nd ? this.findTrigger(start, span) : null;
   if (tt !== null) {
-    this.status = "TRIG'D"; this.lastTrig = tt; this.scanEnd = tt + Math.max(t.holdoff, 1e-4); this.simT = Math.max(this.simT, this.scanEnd);
+    this.status = "TRIG'D"; this.lastTrig = tt; this.scanEnd = tt + Math.max(t.holdoff, 1e-4, w / 2 + Math.max(0, st.hdelay)); this.simT = Math.max(this.simT, this.scanEnd);
     this.acquire(tt + st.hdelay - w / 2);
     if (st.single) { st.run = false; st.single = false; this.status = 'STOP'; this.log.single = true; }
     return true;
@@ -1659,7 +1681,7 @@ OL.Bench = function (parent, App, opts) {
     add(b.ne555, 'out', 'NE555 — sortie (broche 3)'); add(b.ne555, 'cap', 'NE555 — condensateur (broches 2-6)');
     add(b.rc, 'in', 'RC — tension d\'entrée E'); add(b.rc, 'vc', 'RC — tension Uc aux bornes de C');
     add(b.rcf, 'in', 'Filtre RC — entrée Ue'); add(b.rcf, 'out', 'Filtre RC — sortie Us');
-    add(b.push, 'out', 'Bouton poussoir — sortie'); add(b.dc, 'out', 'Alimentation continue');
+    add(b.push, 'out', 'Bouton poussoir — sortie'); add(b.noisy, 'out', 'Capteur bruité — sortie'); add(b.dc, 'out', 'Alimentation continue');
     return l;
   };
   B.find = id => { const [k, key] = id.split('.'); const src = Object.values(App.bench).find(s => s && s.kind === k); return src ? { src, key } : null; };
@@ -1700,6 +1722,7 @@ OL.Bench.prototype.build = function () {
   mk('RC : charge / décharge', b => { numField(b, 'Résistance R', () => bb.rc.R, v => { bb.rc.R = Math.max(1, v); }, R); numField(b, 'Condensateur C', () => bb.rc.C, v => { bb.rc.C = Math.max(1e-12, v); }, [['nF', 1e-9], ['µF', 1e-6]]); numField(b, 'Tension E', () => bb.rc.E, v => { bb.rc.E = v; }, [['V', 1]]); numField(b, 'Fréquence du carré', () => bb.rc.freq, v => { bb.rc.freq = Math.max(0.01, v); }, Hz); });
   mk('Filtre RC (déphasage)', b => { const r = E('div', 'row', b); const s = E('div', 'seg', r); [['low', 'Passe-bas'], ['high', 'Passe-haut']].forEach(([k, t]) => { const bt = E('button', k === bb.rcf.type ? 'on' : '', s, null, t); bt.addEventListener('click', () => { bb.rcf.type = k; s.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === bt)); }); }); numField(b, 'R', () => bb.rcf.R, v => { bb.rcf.R = Math.max(1, v); }, R); numField(b, 'C', () => bb.rcf.C, v => { bb.rcf.C = Math.max(1e-12, v); }, [['nF', 1e-9], ['µF', 1e-6]]); numField(b, 'Fréquence', () => bb.rcf.freq, v => { bb.rcf.freq = Math.max(0.1, v); }, Hz); numField(b, 'Amplitude (c-c)', () => bb.rcf.amp, v => { bb.rcf.amp = v; }, [['V', 1]]); });
   mk('Bouton poussoir', b => { const r = E('div', 'row', b); const p = E('button', 'btn pri', r, null, 'Appuyer'); const q = E('button', 'btn', r, null, 'Relâcher'); p.addEventListener('click', () => { bb.push.press((App.scope.scanEnd || App.scope.simT) + 0.003); }); q.addEventListener('click', () => bb.push.release()); const l = E('label', '', r); const cb = E('input', '', l); cb.type = 'checkbox'; cb.checked = bb.push.bounce; cb.addEventListener('change', () => { bb.push.bounce = cb.checked; }); l.append(' avec rebonds'); });
+  mk('Capteur bruité', b => { numField(b, 'Fréquence', () => bb.noisy.freq, v => { bb.noisy.freq = Math.max(1, v); }, Hz); numField(b, 'Amplitude (c-c)', () => bb.noisy.amp, v => { bb.noisy.amp = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); numField(b, 'Bruit (efficace, à 100 MHz)', () => bb.noisy.noise, v => { bb.noisy.noise = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); numField(b, 'Ronflement 50 Hz', () => bb.noisy.hum, v => { bb.noisy.hum = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); });
   mk('Alimentation continue', b => { numField(b, 'Tension', () => bb.dc.v, v => { bb.dc.v = v; }, [['V', 1]]); numField(b, 'Ondulation (c-c)', () => bb.dc.ripple, v => { bb.dc.ripple = Math.max(0, v); }, [['mV', 1e-3], ['V', 1]]); });
 };
 OL.Bench.prototype.refresh = function () { this.refreshers.forEach(f => f()); };
@@ -2084,6 +2107,39 @@ OL.TPS.push({
 });
 })(typeof window !== 'undefined' ? window : globalThis);
 
+</script><script>
+/* tps_c.js — TP 17 : le bruit, le reconnaître et l'atténuer */
+(function (g) {
+'use strict';
+const OL = g.OL = g.OL || {}, R = OL.rnd, wire = OL.wire;
+const choice = (q, opts, ans) => ({ label: q, opts, ans });
+
+OL.TPS.push({
+  n: 17, id: 'gerer-bruit', title: 'Le bruit : le reconnaître et l\'atténuer', level: 'avancé',
+  goal: 'Un capteur délivre un petit signal <b>noyé dans le bruit</b> : trace épaisse, image qui tremble, lecture imprécise. On apprend à <b>régler l\'oscilloscope</b> pour atténuer le bruit sans perdre le signal : bande passante, déclenchement, moyennage, sensibilité.',
+  only: ['noisy.out'],
+  setup: c => { const n = c.B.noisy; n.freq = R.pick(c.r, [5000, 8000, 10000, 20000]); n.amp = R.pick(c.r, [0.16, 0.2, 0.24]); n.noise = 0.008; n.hum = 0; n.offset = 0; wire(c, 0, 'noisy.out'); c.W.ch[0].trim = 0.25; c.st.ch[0].probe = 10; c.st.ch[0].vIdx = OL.nearest(c.P.vdivs, 0.01); c.st.tdivIdx = OL.nearest(c.P.tdivs, 0.3 / n.freq); c.st.trig.level = 0; c.st.trig.mode = 'auto'; },
+  steps: [
+    { title: 'Reconnaître le bruit', html: '<p>Le signal du capteur est un sinus. Utilise <b>Autoset</b> puis observe la trace : elle est <b>épaisse et floue</b>, et l\'image <b>tremble</b> d\'un balayage à l\'autre.</p>',
+      checks: [{ label: 'Autoset utilisé', ok: c => c.S.log.autoset > 0 }, { label: 'Signal bien cadré (3 à 7,4 carreaux)', ok: c => { const d = c.divPP(0); return d >= 3 && d <= 7.4; } }],
+      questions: [choice('Cette « fourrure » sur la trace est…', ['un signal aléatoire et rapide ajouté au signal utile (le bruit)', 'le secteur 50 Hz', 'un défaut de compensation de la sonde'], 0), { label: 'Amplitude crête-à-crête du <b>signal utile</b> (lis au milieu de l\'épaisseur de la trace)', unit: 'V', ans: c => c.B.noisy.amp, tol: 0.25, hint: 'Ne compte pas les pointes isolées du bruit : lis au centre de la trace' }] },
+    { title: 'Limiter la bande passante', html: '<p>Le signal utile est lent ; le bruit, lui, occupe <b>toutes les fréquences</b>. En limitant la bande passante, on laisse passer le signal et on coupe une partie du bruit. Active la limite <b>20 MHz</b> de la voie 1 et compare l\'épaisseur de la trace.</p>',
+      checks: [{ label: 'Limite de bande passante 20 MHz activée sur la voie 1', ok: c => c.st.ch[0].bw20 }],
+      questions: [choice('Limiter la bande passante à 20 MHz peut poser problème pour…', ['un signal sinusoïdal de 10 kHz', 'un signal carré de 5 MHz à fronts très rapides (les fronts seraient arrondis)', 'un signal continu'], 1)] },
+    { title: 'Stabiliser le déclenchement', html: '<p>Le bruit atteint aussi le <b>circuit de déclenchement</b> : l\'oscilloscope démarre parfois sur un pic de bruit et non sur le signal, l\'image saute. Choisis le couplage de déclenchement <b>HF Reject</b> (rejet des hautes fréquences), et place le niveau <b>au milieu du signal</b>.</p>',
+      checks: [{ label: 'Couplage de déclenchement : rejet HF (HF Reject)', ok: c => c.st.trig.coup === 'hf' }, { label: 'Niveau de déclenchement au milieu du signal', ok: c => Math.abs(c.st.trig.level) < 0.35 * c.B.noisy.amp * 0.5 * (c.st.ch[0].probe === c.W.ch[0].sw ? 1 : 0.1) + 0.01 }, { label: 'Image stable (appareil déclenché)', ok: c => c.S.status === "TRIG'D" }],
+      questions: [choice('Un déclenchement qui « saute » sur un signal bruité vient de…', ['la pointe de la sonde qui est cassée', 'des pics de bruit qui franchissent le niveau avant le signal', 'la base de temps trop lente'], 1)] },
+    { title: 'Moyenner les balayages', html: '<p>Le mode <b>moyenne</b> (Average) calcule la moyenne de plusieurs balayages successifs : le signal utile se répète à l\'identique, le bruit change à chaque fois et <b>s\'annule</b> (divisé par √N). Active-le avec <b>16 moyennes ou plus</b>. Sur le RIGOL, le mode <b>High Res</b> fait aussi une moyenne, sur des points voisins.</p>',
+      checks: [{ label: 'Moyennage actif (16 moyennes ou plus) ou High Res', ok: c => (c.st.acq === 'avg' && c.st.avgN >= 16) || c.st.acq === 'hires' }],
+      questions: [{ label: 'Amplitude crête-à-crête du signal utile, maintenant que le bruit est atténué', unit: 'V', ans: c => c.B.noisy.amp, tol: 0.1 }, choice('Le moyennage ne fonctionne bien que si le signal est…', ['répétitif et bien synchronisé (déclenchement stable)', 'unique, jamais répété', 'continu'], 0)] },
+    { title: 'Bien lire', html: '<p>Dernier réglage : la <b>sensibilité</b>. Le signal doit occuper <b>4 à 7 carreaux</b> : plus il est grand, plus le bruit pèse peu dans la lecture. Mesure ensuite la fréquence.</p>',
+      checks: [{ label: 'Signal de 4 à 7,4 carreaux de haut', ok: c => { const d = c.divPP(0); return d >= 4 && d <= 7.4; } }],
+      questions: [{ label: 'Fréquence du signal', unit: 'kHz', ans: c => c.B.noisy.freq / 1000, tol: 0.06 }, choice('Quel réglage <b>ne</b> réduit <b>pas</b> le bruit à la lecture ?', ['limiter la bande passante à 20 MHz', 'moyenner les balayages', 'augmenter V/div jusqu\'à ce que le bruit « disparaisse »', 'déclencher en rejet HF'], 2)] }
+  ],
+  note: 'Remarque : augmenter V/div fait disparaître le bruit… et le signal avec lui. Mieux vaut atténuer le bruit que le cacher.'
+});
+})(typeof window !== 'undefined' ? window : globalThis);
+
 </script>
 <script>
 /* teach.js — apport pédagogique : notion à comprendre (learn), pas à pas par appareil (how), coup de pouce (hint).
@@ -2181,6 +2237,14 @@ T['masse'] = [
   { learn: 'Sans pince de masse, la sonde se comporte comme une antenne : elle capte le <b>secteur 50 Hz</b> (et ses harmoniques) qui se superpose au signal. Reconnaître un parasite : il se répète à <b>20 ms</b> (50 Hz), quelle que soit la fréquence du signal.', how: D([['SEC/DIV à 5 ms/div pour voir 60 ms', ['secdiv']], ['Mesure l\'intervalle entre deux motifs identiques : c\'est la période du parasite', []]], [['SCALE horizontal à 5 ms/div', ['hscale']], ['Mesure l\'intervalle entre deux motifs identiques', []]]), hint: 'Période du parasite 20 ms → f = 1/0,02 = 50 Hz.' },
   { learn: 'La pince de masse relie la masse de l\'oscilloscope à la masse du circuit. <b>Toujours</b> la brancher, <b>au plus près</b> du point mesuré.', how: D([['Ouvre « Branchements des sondes » et coche « pince de masse »', []]], [['Ouvre « Branchements des sondes » et coche « pince de masse »', []]]), hint: 'Après branchement, le parasite doit disparaître.' }
 ];
+
+T['gerer-bruit'] = [
+  { learn: 'Le <b>bruit</b> est un signal <b>aléatoire et rapide</b> qui se superpose au signal utile : il vient des composants, des câbles, de l\'environnement et de l\'oscilloscope lui-même. Il <b>épaissit la trace</b>, rend la lecture imprécise et fait <b>trembler</b> l\'image. À ne pas confondre avec un parasite <b>périodique</b> (le 50 Hz du secteur, TP 16).', how: autoHow, hint: 'Un signal de 200 mV avec une sonde ×10 arrive à seulement 20 mV sur l\'entrée de l\'appareil : le bruit se voit bien.' },
+  { learn: 'Le bruit s\'étale sur <b>toutes les fréquences</b> : plus la bande passante est large, plus il en entre. Le <b>filtre 20 MHz</b> (BW Limit) coupe les hautes fréquences : <b>le signal lent passe, une partie du bruit est supprimée</b>. Attention : il arrondit aussi les fronts très rapides.', how: D([['Appuie sur CH1', ['ch1']], ['H2 (BW Limit) puis F2 pour choisir ON', ['h2', 'f2']], ['Compare l\'épaisseur de la trace', []]], [['Appuie sur CH1', ['ch1']], ['Appuie sur la 2e touche du menu (BW Limit) pour passer à 20MHz', ['soft2']], ['Compare l\'épaisseur de la trace', []]]), hint: 'Sur l\'OWON (30 MHz), le gain est faible car le filtre 20 MHz est proche de la bande de l\'appareil. Sur le RIGOL, il est plus net.' },
+  { learn: 'Le circuit de déclenchement voit lui aussi le bruit : il peut démarrer sur un <b>pic de bruit</b> au lieu du vrai franchissement. Le couplage <b>HF Reject</b> filtre les hautes fréquences <b>pour le déclenchement seulement</b> : l\'image se stabilise, sans changer ce qui est affiché.', how: D([['Appuie sur Trigger Menu', ['trigmenu']], ['H3 (Coupling) puis F3 (HF Reject)', ['h3', 'f3']], ['Touche 50 % : niveau au milieu du signal', ['p50']]], [['Appuie sur MENU de la zone TRIGGER', ['trigmenu']], ['5e touche (Coupling) : appuie jusqu\'à HF Reject', ['soft5']], ['Tourne LEVEL pour placer le niveau au milieu du signal', ['level']]]), hint: 'Le niveau doit couper le signal à son milieu, là où la pente est la plus forte : le bruit y a le moins d\'effet sur l\'instant de déclenchement.' },
+  { learn: 'En <b>moyennant</b> N balayages, le bruit est divisé par <b>√N</b> (16 balayages : bruit ÷ 4 ; 64 : ÷ 8). Le signal utile, lui, est conservé. Il faut un signal <b>répétitif</b> et un déclenchement <b>stable</b>, sinon on moyenne aussi le décalage entre balayages.', how: D([['Acquire → H1 (Mode) → F3 (Average)', ['acquire', 'h1', 'f3']], ['H2 (Averages) → F3 (64)', ['h2', 'f3']]], [['Acquire → 1re touche (Mode) : Averages (ou High Res)', ['acquire', 'soft1']], ['2e touche (Averages) : 64 (liste puis appui sur le bouton multifonction)', ['soft2', 'mf']]]), hint: 'Si l\'image devient floue après moyennage, le déclenchement est instable : reviens à l\'étape précédente.' },
+  { learn: 'Plus le signal occupe de carreaux, plus le bruit est <b>petit relativement</b> à lui et plus la lecture est précise. On règle donc V/div pour <b>4 à 7 carreaux</b>. Augmenter V/div jusqu\'à ne plus voir le bruit serait une erreur : le signal rétrécit aussi.', how: D([['VOLTS/DIV : tourne vers la droite pour agrandir le signal', ['vdiv1']], ['VERTICAL POSITION : centre la trace', ['vpos1']]], [['SCALE vertical vers la droite pour agrandir', ['vscale']], ['POSITION : centre la trace', ['vpos']]]), hint: 'Pour la fréquence : lis la période sur la grille ou affiche la mesure Freq (Measure).' }
+];
 })(typeof window !== 'undefined' ? window : globalThis);
 
 </script>
@@ -2194,7 +2258,7 @@ const $ = s => document.querySelector(s);
 const App = OL.App = { dev: 'owon', scope: null, ui: null, bench: null, tp: null, seed: 1, rnd: null, tpui: null };
 
 App.makeBench = function () {
-  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}) };
+  return { gbf: OL.FuncGen({}), comp: null, bridge: OL.Bridge({}), ne555: OL.NE555({}), rc: OL.RCStep({}), rcf: OL.RCFilter({}), dc: OL.DCSource({}), push: OL.PushButton({}), noisy: OL.NoisySignal({}) };
 };
 /* construit un appareil + une paillasse ; tp = null pour le mode libre */
 App.build = function (dev, tp, seed) {

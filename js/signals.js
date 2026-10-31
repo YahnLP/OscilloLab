@@ -153,4 +153,14 @@ OL.PushButton = function (o) {
   s.fhint = () => 1;
   return s;
 };
+/* ---------- Signal bruité : sinus + bruit large bande (+ ronflement 50 Hz éventuel) ----------
+   noise = valeur efficace du bruit pour une bande passante de 100 MHz (le bruit diminue avec la bande passante utilisée) */
+OL.NoisySignal = function (o) {
+  const s = Object.assign({ kind: 'noisy', name: 'Capteur bruité', freq: 10000, amp: 0.2, offset: 0, noise: 0.012, hum: 0 }, o);
+  s.noiseRms = s.noise;
+  s.nodes = { out: { label: 'Sortie du capteur (bruitée)', fn: t => s.offset + 0.5 * s.amp * Math.sin(TAU * s.freq * t) + s.hum * Math.sin(TAU * 50 * t) } };
+  s.fhint = () => s.freq;
+  Object.defineProperty(s, 'noiseRms', { get: () => s.noise });
+  return s;
+};
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -104,11 +104,20 @@ function timeGrid(t0, dt, N, pre) {
 }
 SP.preTime = function (i) { const b = this.bench.ch[i]; return (b.sw === 10 ? 20e-6 * 8 : 0) + 3e-6; };
 
+/* ----- bruit d'entrée : proportionnel à la racine de la bande passante réellement utilisée ----- */
+SP.noiseSigma = function (i, forTrigger) {
+  const nd = this.nodeOf(i); if (!nd || !nd.src.noiseRms) return 0;
+  const b = this.bench.ch[i], c = this.st.ch[i], x10 = b.sw === 10, att = x10 ? 0.1 : 1;
+  let bw = Math.min(this.P.bw, x10 ? 100e6 : this.P.bwProbeX1); if (c.bw20 && !forTrigger) bw = Math.min(bw, 20e6);
+  return nd.src.noiseRms * att * Math.sqrt(bw / 100e6);
+};
 /* ----- déclenchement ----- */
 SP.trigSignal = function (ts, shift) {
-  const t = this.st.trig, i = t.src, y = this.front(i, ts);
+  const t = this.st.trig, i = t.src; let y = this.front(i, ts);
   const c = this.st.ch[i], k = c.probe;
   let out = y;
+  const sg = this.noiseSigma(i, true) * (t.coup === 'hf' ? 0.12 : 1);
+  if (sg > 0) { out = new Float64Array(y.length); for (let k = 0; k < y.length; k++) out[k] = y[k] + OL.gauss(this.rand) * sg; y = out; }
   if (t.coup === 'ac') { /* passe-haut ~ 10 Hz : retrait de la moyenne locale */
     const nd = this.nodeOf(i); if (nd) { const m = this.dcMean(nd.src, nd.key) * (this.bench.ch[i].sw === 10 ? 0.1 : 1); out = y.map(v => v - m); }
   }
@@ -125,18 +134,21 @@ SP.findTrigger = function (tStart, span) {
   const f = nd.src.fhint ? nd.src.fhint() : 1e3;
   const dt = Math.max(1e-9, Math.min(1 / (60 * f), this.window() / 1500, span / 20));
   const level = t.level / this.st.ch[i].probe;   /* niveau ramené à l'entrée */
+  const hy = 0.1 * this.baseV(i);                 /* sensibilité du déclenchement : 0,1 carreau */
   const pre = this.preTime(i), block = 4096;
-  let tt = tStart, prev = null, last = -Infinity, scanned = 0, maxSteps = 300000;
+  let tt = tStart, prev = null, last = -Infinity, scanned = 0, maxSteps = 300000, armUp = false, armDn = false;
   const hold = Math.max(t.holdoff, 0);
   while (scanned < span && maxSteps > 0) {
     const g = timeGrid(tt, dt, block, scanned === 0 ? pre : 0), y = this.trigSignal(g.ts);
     const base = g.m;
     for (let k = base; k < y.length; k++) {
       const v = y[k];
+      if (v < level - hy) armUp = true; if (v > level + hy) armDn = true;      /* hystérésis du comparateur : le signal doit d'abord s'éloigner du niveau */
       if (prev !== null) {
-        const up = prev < level && v >= level, dn = prev > level && v <= level;
+        const up = armUp && prev < level && v >= level, dn = armDn && prev > level && v <= level;
         const hit = (t.slope === 'rise' && up) || (t.slope === 'fall' && dn) || (t.slope === 'both' && (up || dn));
         if (hit) {
+          if (up) armUp = false; if (dn) armDn = false;
           const tc = g.ts[k - 1] + (level - prev) / (v - prev) * (g.ts[k] - g.ts[k - 1]);
           if (tc - last >= hold && tc > tStart + 0) return tc;
           /* sinon : dans le temps mort, on ignore */
@@ -163,7 +175,7 @@ SP.acquire = function (tLeft) {
     const F = (st.acq === 'peak' && n > N) ? Math.max(8, Math.min(64, Math.ceil(rec.dt / 0.5e-6))) : (st.acq === 'hires' && n > N ? 8 : 1);
     const g = timeGrid(tLeft, rec.dt / F, N * F, pre), y = this.front(i, g.ts);
     const out = new Float64Array(N), pkm = st.acq === 'peak', mn = F > 1 && pkm ? new Float64Array(N) : null, mx = F > 1 && pkm ? new Float64Array(N) : null;
-    const vk = this.baseV(i), noiseV = 0.0004 + vk * 0.003;
+    const vk = this.baseV(i), sx = this.noiseSigma(i, false), noiseV = Math.sqrt(Math.pow(0.0004 + vk * 0.003, 2) + sx * sx);
     for (let j = 0; j < N; j++) {
       if (F === 1) out[j] = y[g.m + j] + OL.gauss(this.rand) * noiseV;
       else if (!pkm) { let s = 0; for (let q = 0; q < F; q++) s += y[g.m + j * F + q] + OL.gauss(this.rand) * noiseV; out[j] = s / F; }
@@ -201,7 +213,7 @@ SP.tick = function (dtReal) {
   const start = Math.max(this.scanEnd || this.simT, this.simT - 2);   /* le balayage de déclenchement est continu */
   const tt = nd ? this.findTrigger(start, span) : null;
   if (tt !== null) {
-    this.status = "TRIG'D"; this.lastTrig = tt; this.scanEnd = tt + Math.max(t.holdoff, 1e-4); this.simT = Math.max(this.simT, this.scanEnd);
+    this.status = "TRIG'D"; this.lastTrig = tt; this.scanEnd = tt + Math.max(t.holdoff, 1e-4, w / 2 + Math.max(0, st.hdelay)); this.simT = Math.max(this.simT, this.scanEnd);
     this.acquire(tt + st.hdelay - w / 2);
     if (st.single) { st.run = false; st.single = false; this.status = 'STOP'; this.log.single = true; }
     return true;
