@@ -981,7 +981,7 @@ OL.OwonUI = function (root, S) {
   const box = E('div', 'panel owon', root, { width: W + 'px', height: H + 'px' });
   U.box = box;
   E('div', 'o-bezel', box, { left: '28px', top: '28px', width: '506px', height: '387px' });
-  const cv = E('canvas', 'o-screen', box, { left: '42px', top: '44px', width: '478px', height: '359px' });
+  const cv = E('canvas', 'o-screen', box, { left: '36px', top: '36px', width: '490px', height: '367px' });
   cv.width = 800; cv.height = 600; U.cv = cv;
   const ctx = cv.getContext('2d');
   E('div', 'o-logo', box, { left: '34px', top: '440px' }, '<b>OWON</b> <small>Smart&nbsp;Oscilloscope</small>');
@@ -990,7 +990,7 @@ OL.OwonUI = function (root, S) {
 
   /* touches H et F */
   const hk = [], fk = [];
-  for (let i = 0; i < 5; i++) hk.push(OL.Key(box, { x: 241 + 54.7 * i, y: 421, w: 40, h: 22, label: 'H' + (i + 1), cls: 'round', on: () => pressH(i) }));
+  for (let i = 0; i < 5; i++) hk.push(OL.Key(box, { x: 240.4 + 55.4 * i, y: 421, w: 40, h: 22, label: 'H' + (i + 1), cls: 'round', on: () => pressH(i) }));
   for (let i = 0; i < 5; i++) fk.push(OL.Key(box, { x: 556, y: 116 + i * 46, w: 38, h: 30, label: 'F' + (i + 1), cls: 'round', on: () => pressF(i) }));
   OL.Key(box, { x: 556, y: 346, w: 38, h: 22, label: 'Menu<br>off', cls: 'round tiny', on: () => { U.menu = null; U.open = -1; } });
 
@@ -1273,7 +1273,7 @@ OL.OwonUI = function (root, S) {
     if (U.open >= 0 && items[U.open] && items[U.open].opts) {
       const it = items[U.open]; let opts = typeof it.opts === 'function' ? it.opts() : it.opts; let first = 0;
       if (opts.length > 5) { first = U.page * 4; const show = opts.slice(first, first + 4); show.push({ t: 'Page ' + (U.page + 1) + '/' + Math.ceil(opts.length / 4) + ' ▼' }); opts = show; first = 0; }
-      opts.forEach((o, k) => { const y = 115 + k * 77; const g = c.createLinearGradient(0, y, 0, y + 62); g.addColorStop(0, '#2a74c8'); g.addColorStop(1, '#0d3a78'); OL.rrect(c, 700, y, 92, 62, 6, g, '#aee', 1);
+      opts.forEach((o, k) => { const y = 122 + k * 76.4; const g = c.createLinearGradient(0, y, 0, y + 62); g.addColorStop(0, '#2a74c8'); g.addColorStop(1, '#0d3a78'); OL.rrect(c, 700, y, 92, 62, 6, g, '#aee', 1);
         const t = typeof o.t === 'function' ? o.t() : o.t; const parts = String(t).split('<br>'); parts.forEach((p, q) => OL.text(c, p, 746, y + 31 + (q - (parts.length - 1) / 2) * 17, { size: 15, align: 'center' })); });
     }
   }
@@ -1305,7 +1305,7 @@ OL.RigolUI = function (root, S) {
   const W = 1100, H = 540;
   const box = E('div', 'panel rigol', root, { width: W + 'px', height: H + 'px' }); U.box = box;
   E('div', 'r-bezel', box, { left: '70px', top: '34px', width: '588px', height: '364px' });
-  const cv = E('canvas', 'r-screen', box, { left: '95px', top: '56px', width: '540px', height: '324px' }); cv.width = 800; cv.height = 480; U.cv = cv;
+  const cv = E('canvas', 'r-screen', box, { left: '76px', top: '40px', width: '576px', height: '346px' }); cv.width = 800; cv.height = 480; U.cv = cv;
   const ctx = cv.getContext('2d');
   E('div', 'r-brand', box, { left: '74px', top: '4px' }, '<b>RIGOL</b><i>DS1054Z</i>');
   E('div', 'r-sub', box, { left: '300px', top: '12px' }, 'DIGITAL OSCILLOSCOPE &nbsp; 50&nbsp;MHz &nbsp; 1&nbsp;GSa/s &nbsp; 12&nbsp;Mpts');
@@ -1313,7 +1313,7 @@ OL.RigolUI = function (root, S) {
   /* touches programmables */
   const sk = [];
   const mkSoft = (side, i) => {
-    const x = side === 'l' ? 20 : 670, y = 100 + i * 39.75;
+    const x = side === 'l' ? 20 : 670, y = 87.5 + i * 42.5;
     return OL.Key(box, { x, y, w: 44, h: 30, label: '', cls: 'rkey ' + (side === 'l' ? 'soft' : 'softr'), on: () => (side === 'l' ? pressQM(i) : pressSoft(i)) });
   };
   const rs = [], ls = [];
@@ -1545,7 +1545,7 @@ OL.RigolUI = function (root, S) {
   function drawQM(c) {
     if (U.qm === null) return; const keys = (U.qm === 0 ? OL.RIGOL_H : OL.RIGOL_V).slice((U.qmPage || 0) * 6, (U.qmPage || 0) * 6 + 6);
     OL.text(c, U.qm === 0 ? 'Horizontal' : 'Vertical', 40, 47, { size: 12, align: 'center', color: '#fff' });
-    keys.forEach((k, i) => { const y = 58 + i * 60; OL.rrect(c, 8, y, 64, 52, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall').replace('Period Area', 'P.Area'), 40, y + 38, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(24, y + 9, 32, 18); });
+    keys.forEach((k, i) => { const y = 58 + i * 60; OL.rrect(c, 4, y, 64, 52, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall').replace('Period Area', 'P.Area'), 40, y + 38, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(20, y + 9, 32, 18); });
   }
   function drawCursors(c) {
     const cu = U.cur, dh = GR.h / 8, cy = GR.y + GR.h / 2, src = cu.src, lab = Math.abs(S.vdivLabel(src)), wd = GR.w / 12, pos = st.ch[src].pos;

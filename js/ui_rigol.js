@@ -12,7 +12,7 @@ OL.RigolUI = function (root, S) {
   const W = 1100, H = 540;
   const box = E('div', 'panel rigol', root, { width: W + 'px', height: H + 'px' }); U.box = box;
   E('div', 'r-bezel', box, { left: '70px', top: '34px', width: '588px', height: '364px' });
-  const cv = E('canvas', 'r-screen', box, { left: '95px', top: '56px', width: '540px', height: '324px' }); cv.width = 800; cv.height = 480; U.cv = cv;
+  const cv = E('canvas', 'r-screen', box, { left: '76px', top: '40px', width: '576px', height: '346px' }); cv.width = 800; cv.height = 480; U.cv = cv;
   const ctx = cv.getContext('2d');
   E('div', 'r-brand', box, { left: '74px', top: '4px' }, '<b>RIGOL</b><i>DS1054Z</i>');
   E('div', 'r-sub', box, { left: '300px', top: '12px' }, 'DIGITAL OSCILLOSCOPE &nbsp; 50&nbsp;MHz &nbsp; 1&nbsp;GSa/s &nbsp; 12&nbsp;Mpts');
@@ -20,7 +20,7 @@ OL.RigolUI = function (root, S) {
   /* touches programmables */
   const sk = [];
   const mkSoft = (side, i) => {
-    const x = side === 'l' ? 20 : 670, y = 100 + i * 39.75;
+    const x = side === 'l' ? 20 : 670, y = 87.5 + i * 42.5;
     return OL.Key(box, { x, y, w: 44, h: 30, label: '', cls: 'rkey ' + (side === 'l' ? 'soft' : 'softr'), on: () => (side === 'l' ? pressQM(i) : pressSoft(i)) });
   };
   const rs = [], ls = [];
@@ -252,7 +252,7 @@ OL.RigolUI = function (root, S) {
   function drawQM(c) {
     if (U.qm === null) return; const keys = (U.qm === 0 ? OL.RIGOL_H : OL.RIGOL_V).slice((U.qmPage || 0) * 6, (U.qmPage || 0) * 6 + 6);
     OL.text(c, U.qm === 0 ? 'Horizontal' : 'Vertical', 40, 47, { size: 12, align: 'center', color: '#fff' });
-    keys.forEach((k, i) => { const y = 58 + i * 60; OL.rrect(c, 8, y, 64, 52, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall').replace('Period Area', 'P.Area'), 40, y + 38, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(24, y + 9, 32, 18); });
+    keys.forEach((k, i) => { const y = 58 + i * 60; OL.rrect(c, 4, y, 64, 52, 4, '#101820', '#3a6', 1); OL.text(c, OL.MEAS[k].r.replace('Rise Time', 'Rise').replace('Fall Time', 'Fall').replace('Period Area', 'P.Area'), 40, y + 38, { size: 12, align: 'center', color: U.meas.some(m => m.id === st.sel + k) ? '#ff0' : '#fff' }); c.strokeStyle = '#7fb'; c.strokeRect(20, y + 9, 32, 18); });
   }
   function drawCursors(c) {
     const cu = U.cur, dh = GR.h / 8, cy = GR.y + GR.h / 2, src = cu.src, lab = Math.abs(S.vdivLabel(src)), wd = GR.w / 12, pos = st.ch[src].pos;
