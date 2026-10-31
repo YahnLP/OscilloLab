@@ -60,3 +60,7 @@ t('profondeur mémoire : un petit parasite échappe à l\'OWON en Sample mais pa
   S.st.acq = 'peak'; run(S, 2); const pk = S.peakDivs(0); assert(pk && Math.max(...pk.hi) > 1.5, 'peak detect doit voir l\'impulsion');
 });
 console.log('\n' + n + ' tests réussis');
+(() => { /* Autoscale continu : ne rallume pas une voie éteinte */
+  const g = O.FuncGen({ freq: 1000, amp: 2 }), c = O.ProbeComp(5); const S = new O.Scope(O.PROFILES.owon, { ch: [{ node: { src: g, key: 'out' }, sw: 10, trim: 0.25, ground: true }, { node: { src: c, key: 'out' }, sw: 10, trim: 0.25, ground: true }], mism: [1.25, 0.85] });
+  S.st.ch[0].probe = 10; S.st.ch[1].probe = 10; S.autoset(); assert(S.st.ch[1].on); S.st.ch[1].on = false; S.autoset({ keep: true }); assert.strictEqual(S.st.ch[1].on, false); console.log('ok  Autoscale ne rallume pas une voie éteinte');
+})();

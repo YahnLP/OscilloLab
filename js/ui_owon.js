@@ -323,7 +323,7 @@ OL.OwonUI = function (root, S) {
     }
   }
   U.tickFrame = function (dt) {
-    if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset(); } }
+    if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset({ keep: true }); } }
     bk.run.setLed(st.run); bk.run.classList.toggle('stopped', !st.run);
   };
 };

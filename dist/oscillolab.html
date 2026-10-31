@@ -702,12 +702,13 @@ OL.fmtMeas = function (def, v) { return v === null || v === undefined || !isFini
 (function (g) {
 'use strict';
 const OL = g.OL = g.OL || {};
-OL.Scope.prototype.autoset = function () {
+OL.Scope.prototype.autoset = function (opts) {
+  opts = opts || {};
   const S = this, P = S.P, st = S.st;
   let found = null;
   const first = [];
   for (let i = 0; i < P.nch; i++) {
-    const nd = S.nodeOf(i); if (!nd) continue;
+    const nd = S.nodeOf(i); if (!nd) continue; if (opts.keep && !st.ch[i].on) continue;   /* Autoscale n'allume ni n'éteint de voie */
     const f = nd.src.fhint ? nd.src.fhint() : 0;
     /* analyse sur 40 périodes : amplitude crête-crête et moyenne */
     const T = 1 / f, N = 4000; let mn = Infinity, mx = -Infinity, sm = 0;
@@ -726,7 +727,7 @@ OL.Scope.prototype.autoset = function () {
   const nOk = ok.length;
   for (const x of first) {
     const c = st.ch[x.i];
-    if (!x.ok) { c.on = false; continue; }
+    if (!x.ok) { if (!opts.keep) c.on = false; continue; }
     c.on = true; if (c.coup === 'gnd') c.coup = 'dc';
     const sw = S.bench.ch[x.i].sw, att = sw === 10 ? 0.1 : 1;
     const ppIn = x.pp * att;                           /* amplitude réelle à l'entrée de l'appareil */
@@ -1201,7 +1202,7 @@ OL.OwonUI = function (root, S) {
     }
   }
   U.tickFrame = function (dt) {
-    if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset(); } }
+    if (U.autoscale) { U.asT = (U.asT || 0) + dt; if (U.asT > 2) { U.asT = 0; if (!st.xy) S.autoset({ keep: true }); } }
     bk.run.setLed(st.run); bk.run.classList.toggle('stopped', !st.run);
   };
 };
